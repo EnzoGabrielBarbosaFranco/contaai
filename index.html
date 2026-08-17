@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Controle financeiro pessoal salvo no navegador.">
+  <title>ContaAí — Controle financeiro pessoal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=2">
+</head>
+<body>
+  <svg class="svg-sprite" aria-hidden="true">
+    <symbol id="icon-logo" viewBox="0 0 24 24"><path d="M5 16.5 12 4l7 12.5"/><path d="M7.7 12h8.6M9.5 16h5"/></symbol>
+    <symbol id="icon-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
+    <symbol id="icon-receipt" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z"/><path d="M9 8h6M9 12h6"/></symbol>
+    <symbol id="icon-repeat" viewBox="0 0 24 24"><path d="m17 2 4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></symbol>
+    <symbol id="icon-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v2M21 12h-2M12 21v-2M3 12h2"/></symbol>
+    <symbol id="icon-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.6 2.8 8.1 7 10 4.2-1.9 7-5.4 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="icon-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="icon-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="icon-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="icon-moon" viewBox="0 0 24 24"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2Z"/></symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="icon-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="icon-download" viewBox="0 0 24 24"><path d="M12 3v12m0 0 5-5m-5 5-5-5"/><path d="M5 20h14"/></symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></symbol>
+    <symbol id="icon-wallet" viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H18a2 2 0 0 1 2 2v13H6a2 2 0 0 1-2-2V6.5Z"/><path d="M4 8h16M16 13h4"/></symbol>
+    <symbol id="icon-arrow-up-right" viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></symbol>
+    <symbol id="icon-arrow-down-right" viewBox="0 0 24 24"><path d="m7 7 10 10M17 9v8H9"/></symbol>
+    <symbol id="icon-piggy-bank" viewBox="0 0 24 24"><path d="M5 10a7 7 0 0 1 13.5-2.5H21v6h-2a7 7 0 0 1-3 3.5V20h-3v-2H9v2H6v-3.5A7 7 0 0 1 5 10Z"/><path d="M9 7h4M17 10h.01"/></symbol>
+    <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></symbol>
+    <symbol id="icon-chart" viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></symbol>
+    <symbol id="icon-inbox" viewBox="0 0 24 24"><path d="m5 5-2 9v5h18v-5l-2-9H5Z"/><path d="M3 14h5l2 3h4l2-3h5"/></symbol>
+  </svg>
+  <main class="app" id="app">
+    <aside class="sidebar" id="sidebar">
+      <button class="mobile-close" id="closeMenu" aria-label="Fechar menu"><svg class="icon"><use href="#icon-close"></use></svg></button>
+      <div class="brand"><span class="brand-mark"><svg class="icon"><use href="#icon-logo"></use></svg></span><span>Conta<strong>Aí</strong></span></div>
+      <nav aria-label="Navegação principal">
+        <p class="nav-label">MENU</p>
+        <button class="nav-item active" data-view="dashboard"><span><svg class="icon"><use href="#icon-dashboard"></use></svg></span>Visão geral</button>
+        <button class="nav-item" data-view="transactions"><span><svg class="icon"><use href="#icon-receipt"></use></svg></span>Lançamentos</button>
+        <button class="nav-item" data-view="recurring"><span><svg class="icon"><use href="#icon-repeat"></use></svg></span>Gastos fixos <b class="nav-badge" id="fixedCount">0</b></button>
+        <button class="nav-item" data-view="goals"><span><svg class="icon"><use href="#icon-target"></use></svg></span>Minhas metas</button>
+      </nav>
+      <div class="sidebar-tip">
+        <span><svg class="icon"><use href="#icon-shield"></use></svg></span><strong>Dados somente no seu navegador</strong>
+        <p>Ficam salvos somente neste navegador. Faça backups regularmente.</p>
+        <button id="backupBtn">Criar backup</button>
+        <button class="link-btn" id="restoreBtn">Restaurar backup</button>
+        <input type="file" id="restoreInput" accept="application/json" hidden>
+      </div>
+      <div class="sidebar-foot">ContaAí · controle pessoal</div>
+    </aside>
+
+    <button class="scrim" id="scrim" aria-label="Fechar menu"></button>
+
+    <section class="workspace">
+      <header class="topbar">
+        <button class="hamburger" id="openMenu" aria-label="Abrir menu"><svg class="icon"><use href="#icon-menu"></use></svg></button>
+        <div class="period-control">
+          <button id="prevPeriod" aria-label="Período anterior"><svg class="icon"><use href="#icon-chevron-left"></use></svg></button>
+          <div><span>PERÍODO ATUAL</span><strong id="periodLabel">—</strong></div>
+          <button id="nextPeriod" aria-label="Próximo período"><svg class="icon"><use href="#icon-chevron-right"></use></svg></button>
+        </div>
+        <div class="top-actions"><button class="icon-button" id="themeBtn" aria-label="Alternar tema"><svg class="icon"><use href="#icon-moon"></use></svg></button><button class="primary-btn" data-open-transaction="expense"><svg class="icon"><use href="#icon-plus"></use></svg>Novo lançamento</button></div>
+      </header>
+
+      <div class="content">
+        <section id="dashboardView" class="view active">
+          <div class="welcome">
+            <div><span class="eyebrow">PAINEL FINANCEIRO</span><h1>Visão geral</h1><p>Entradas, despesas e objetivos reunidos em um só lugar.</p></div>
+            <div class="quick-actions"><button class="income-btn" data-open-transaction="income"><svg class="icon"><use href="#icon-plus"></use></svg>Registrar entrada</button><button class="expense-btn" data-open-transaction="expense"><svg class="icon"><use href="#icon-minus"></use></svg>Registrar despesa</button></div>
+          </div>
+          <div class="period-tabs period-tabs-slot"></div>
+          <section class="summary-grid summary-slot"></section>
+          <section class="dashboard-grid">
+            <article class="panel monthly-chart">
+              <div class="panel-head"><div><span class="eyebrow">ÚLTIMOS 6 MESES</span><h2>Entradas e despesas</h2></div><div class="legend"><span><i class="dot income-dot"></i>Entradas</span><span><i class="dot expense-dot"></i>Despesas</span></div></div>
+              <div class="chart-area" id="monthlyChart"></div>
+            </article>
+            <article class="panel category-chart">
+              <div class="panel-head"><div><span class="eyebrow">DISTRIBUIÇÃO DO PERÍODO</span><h2>Despesas por categoria</h2></div></div>
+              <div id="categoryChart"></div>
+            </article>
+          </section>
+          <section class="lower-grid">
+            <article class="panel transactions-panel">
+              <div class="panel-head"><div><span class="eyebrow">MOVIMENTAÇÕES</span><h2>Lançamentos recentes</h2></div><button class="text-button" data-go-view="transactions">Ver todos ›</button></div>
+              <div class="mini-search"><span><svg class="icon"><use href="#icon-search"></use></svg></span><input class="search-input" placeholder="Buscar lançamento..."></div>
+              <div class="transaction-list" id="recentTransactions"></div>
+            </article>
+            <article class="insights-panel" id="insightsPanel"></article>
+          </section>
+        </section>
+
+        <section id="transactionsView" class="view">
+          <div class="welcome page-heading"><div><span class="eyebrow">HISTÓRICO FINANCEIRO</span><h1>Seus lançamentos</h1><p>Consulte, filtre e exporte suas movimentações.</p></div><button class="secondary-btn export-btn"><svg class="icon"><use href="#icon-download"></use></svg>Exportar CSV</button></div>
+          <div class="period-tabs period-tabs-slot"></div>
+          <section class="summary-grid summary-slot"></section>
+          <article class="panel full-panel"><div class="table-toolbar"><div class="search-wide"><span><svg class="icon"><use href="#icon-search"></use></svg></span><input class="search-input" placeholder="Buscar por descrição, categoria ou conta"></div><span id="transactionCount"></span></div><div class="transaction-table" id="allTransactions"></div></article>
+        </section>
+
+        <section id="recurringView" class="view">
+          <div class="welcome page-heading"><div><span class="eyebrow">PREVISIBILIDADE MENSAL</span><h1>Gastos fixos</h1><p>Acompanhe compromissos recorrentes e o que ainda falta pagar.</p></div><button class="primary-btn" data-open-transaction="expense"><svg class="icon"><use href="#icon-plus"></use></svg>Adicionar gasto fixo</button></div>
+          <section class="fixed-summary" id="fixedSummary"></section>
+          <article class="panel full-panel"><div class="panel-head"><div><span class="eyebrow">RECORRÊNCIAS DO MÊS</span><h2>Contas e assinaturas</h2></div></div><div class="recurring-grid" id="recurringGrid"></div></article>
+        </section>
+
+        <section id="goalsView" class="view">
+          <div class="welcome page-heading"><div><span class="eyebrow">PLANEJAMENTO</span><h1>Minhas metas</h1><p>Defina objetivos e acompanhe os aportes ao longo do tempo.</p></div><button class="primary-btn" id="openGoal"><svg class="icon"><use href="#icon-plus"></use></svg>Nova meta</button></div>
+          <section class="goals-grid" id="goalsGrid"></section>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <div class="modal-backdrop hidden" id="transactionModal">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-head"><div><span class="eyebrow">NOVO LANÇAMENTO</span><h2 id="transactionModalTitle">Registrar despesa</h2></div><button class="close-modal" aria-label="Fechar"><svg class="icon"><use href="#icon-close"></use></svg></button></div>
+      <form id="transactionForm">
+        <label class="full">Descrição<input name="title" required placeholder="Ex.: Supermercado, salário"></label>
+        <label>Valor (R$)<input name="amount" required type="number" min="0.01" step="0.01" placeholder="0,00"></label>
+        <label>Data<input name="date" required type="date"></label>
+        <label>Categoria<select name="category" id="categorySelect"></select></label>
+        <label>Conta<input name="account" required placeholder="Ex.: Conta corrente, cartão"></label>
+        <label class="full">Observação <small>(opcional)</small><textarea name="note" placeholder="Adicione um detalhe para lembrar depois"></textarea></label>
+        <label class="checkbox full" id="fixedField"><input type="checkbox" name="recurring"><span><b>Este é um gasto fixo</b><small>Será identificado como compromisso mensal.</small></span></label>
+        <div class="modal-actions full"><button type="button" class="secondary-btn close-modal">Cancelar</button><button class="primary-btn">Salvar lançamento</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-backdrop hidden" id="goalModal">
+    <div class="modal small-modal"><div class="modal-head"><div><span class="eyebrow">NOVO OBJETIVO</span><h2>Crie uma meta</h2></div><button class="close-modal" aria-label="Fechar"><svg class="icon"><use href="#icon-close"></use></svg></button></div>
+      <form id="goalForm"><label class="full">Nome da meta<input name="title" required placeholder="Ex.: Comprar um notebook"></label><label>Valor desejado<input name="target" type="number" min="1" required></label><label>Já tenho guardado<input name="saved" type="number" min="0" value="0"></label><div class="modal-actions full"><button type="button" class="secondary-btn close-modal">Cancelar</button><button class="primary-btn">Criar meta</button></div></form>
+    </div>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+  <script src="script.js"></script>
+</body>
+</html>
