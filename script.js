@@ -26,13 +26,97 @@
   const uid = () => window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
   const escapeHTML = value => String(value).replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
 
-  const savedUI = load(UI_STATE_KEY, {});
+  function parseMoney(value) {
+    const raw = String(value ?? "").trim().replace(/\s|R\$/gi, "");
+    if (!raw || /[^\d.,]/.test(raw)) return NaN;
+
+    const comma = raw.lastIndexOf(",");
+    const dot = raw.lastIndexOf(".");
+    let normalized = raw;
+
+    if (comma >= 0 && dot >= 0) {
+      const decimalSeparator = comma > dot ? "," : ".";
+      const groupingSeparator = decimalSeparator === "," ? "." : ",";
+      normalized = raw.split(groupingSeparator).join("");
+      const decimalIndex = normalized.lastIndexOf(decimalSeparator);
+      normalized = `${normalized.slice(0, decimalIndex).split(decimalSeparator).join("")}.${normalized.slice(decimalIndex + 1)}`;
+    } else if (comma >= 0 || dot >= 0) {
+      const separator = comma >= 0 ? "," : ".";
+      const parts = raw.split(separator);
+      const hasValidGroups = parts.slice(1).every(part => part.length === 3);
+      if (parts.length > 1 && hasValidGroups) normalized = parts.join("");
+      else {
+        const decimals = parts.pop();
+        const integerGroups = parts;
+        const validIntegerGroups = integerGroups.length === 1 || integerGroups.slice(1).every(part => part.length === 3);
+        normalized = validIntegerGroups && decimals.length <= 2 ? `${integerGroups.join("")}.${decimals}` : "";
+      }
+    }
+
+    if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) return NaN;
+    return Number(normalized);
+  }
+
+  function formatMoneyValue(value, finalize = false, dotsAreGrouping = false) {
+    const raw = String(value ?? "").replace(/[^\d.,]/g, "");
+    if (!raw) return "";
+
+    const lastComma = raw.lastIndexOf(",");
+    const lastDot = raw.lastIndexOf(".");
+    let decimalIndex = -1;
+
+    if (lastComma >= 0 && lastDot >= 0) decimalIndex = Math.max(lastComma, lastDot);
+    else {
+      const separatorIndex = Math.max(lastComma, lastDot);
+      const digitsAfterSeparator = separatorIndex >= 0 ? raw.length - separatorIndex - 1 : 0;
+      if (separatorIndex >= 0 && digitsAfterSeparator <= 2 && !(dotsAreGrouping && lastDot >= 0)) decimalIndex = separatorIndex;
+    }
+
+    let integerDigits = (decimalIndex >= 0 ? raw.slice(0, decimalIndex) : raw).replace(/\D/g, "");
+    if (!integerDigits) integerDigits = "0";
+    integerDigits = integerDigits.replace(/^0+(?=\d)/, "");
+    const groupedInteger = integerDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    const decimals = decimalIndex >= 0 ? raw.slice(decimalIndex + 1).replace(/\D/g, "").slice(0, 2) : "";
+
+    if (decimalIndex >= 0) return `${groupedInteger},${finalize ? decimals.padEnd(2, "0") : decimals}`;
+    return finalize ? `${groupedInteger},00` : groupedInteger;
+  }
+
+  function formatMoneyField(input, finalize = false, dotsAreGrouping = false) {
+    const raw = input.value;
+    const cursor = input.selectionStart ?? raw.length;
+    const digitsAfterCursor = raw.slice(cursor).replace(/\D/g, "").length;
+    const formatted = formatMoneyValue(raw, finalize, dotsAreGrouping);
+    input.value = formatted;
+    input.dataset.moneyFormatted = formatted;
+
+    if (document.activeElement !== input || finalize) return;
+    let nextCursor = formatted.length;
+    let remainingDigits = digitsAfterCursor;
+    while (nextCursor > 0 && remainingDigits > 0) {
+      nextCursor -= 1;
+      if (/\d/.test(formatted[nextCursor])) remainingDigits -= 1;
+    }
+    input.setSelectionRange(nextCursor, nextCursor);
+  }
+
+  function storageGet(key) {
+    try { return window.localStorage.getItem(key); }
+    catch { return null; }
+  }
+  function storageSet(key, value) {
+    try { window.localStorage.setItem(key, value); return true; }
+    catch { return false; }
+  }
+
+  const loadedUI = load(UI_STATE_KEY, {});
+  const savedUI = loadedUI && typeof loadedUI === "object" && !Array.isArray(loadedUI) ? loadedUI : {};
   const today = new Date();
   const savedAnchor = /^\d{4}-\d{2}-\d{2}$/.test(savedUI.anchor || "") ? parseDate(savedUI.anchor) : today;
   const state = {
-    transactions: load(STORAGE_KEY, []),
-    goals: load(GOALS_KEY, []),
-    categories: load(CATEGORIES_KEY, defaultCategories),
+    transactions: ensureArray(load(STORAGE_KEY, []), []),
+    goals: ensureArray(load(GOALS_KEY, []), []),
+    categories: ensureArray(load(CATEGORIES_KEY, defaultCategories), defaultCategories),
     period: ["day", "week", "month", "year", "range"].includes(savedUI.period) ? savedUI.period : "month",
     anchor: savedAnchor,
     rangeStart: /^\d{4}-\d{2}-\d{2}$/.test(savedUI.rangeStart || "") ? savedUI.rangeStart : toISO(new Date(today.getFullYear(), today.getMonth(), 1)),
@@ -43,24 +127,50 @@
     view: ["dashboard", "transactions", "recurring", "goals"].includes(savedUI.view) ? savedUI.view : "dashboard",
     transactionType: ["expense", "income"].includes(savedUI.transactionType) ? savedUI.transactionType : "expense"
   };
-  state.categories = state.categories.map((category, index) => {
-    const normalized = typeof category === "string" ? { name: category, type: "both" } : category;
-    return { ...normalized, color: colors[normalized.name] || customColors[index % customColors.length] };
-  });
-  state.goals = state.goals.map((goal, index) => ({ ...goal, color: goalColors[index % goalColors.length] }));
+  state.transactions = state.transactions.filter(item => item && typeof item === "object")
+    .map(item => ({
+      ...item,
+      id: typeof item.id === "string" && item.id ? item.id : uid(),
+      title: typeof item.title === "string" && item.title.trim() ? item.title.trim() : "Lançamento",
+      amount: Number(item.amount),
+      type: item.type === "income" ? "income" : "expense",
+      category: typeof item.category === "string" && item.category ? item.category : "Outros",
+      date: /^\d{4}-\d{2}-\d{2}$/.test(item.date || "") ? item.date : toISO(today),
+      account: typeof item.account === "string" && item.account ? item.account : "Não informada",
+      note: typeof item.note === "string" ? item.note : "",
+      recurring: Boolean(item.recurring),
+      paid: typeof item.paid === "boolean" ? item.paid : true
+    }))
+    .filter(item => Number.isFinite(item.amount) && item.amount > 0);
+  state.categories = state.categories
+    .filter(category => typeof category === "string" || (category && typeof category === "object"))
+    .map(category => typeof category === "string" ? { name: category, type: "both" } : category)
+    .filter(category => typeof category.name === "string" && category.name.trim())
+    .map((category, index) => ({
+      ...category,
+      name: category.name.trim(),
+      type: ["expense", "income", "both"].includes(category.type) ? category.type : "both",
+      color: colors[category.name] || category.color || customColors[index % customColors.length]
+    }));
+  if (!state.categories.length) state.categories = defaultCategories.map(category => ({ ...category }));
+  state.goals = state.goals.filter(goal => goal && typeof goal === "object")
+    .map((goal, index) => ({ ...goal, title: String(goal.title || "").trim(), target: Number(goal.target), saved: Number(goal.saved), color: goalColors[index % goalColors.length] }))
+    .filter(goal => goal.title && goal.target > 0 && goal.saved >= 0);
   state.categories.forEach(category => { colors[category.name] = category.color || colors.Outros; });
 
   function load(key, fallback) {
-    try { const value = localStorage.getItem(key); return value ? JSON.parse(value) : fallback; }
+    try { const value = storageGet(key); return value ? JSON.parse(value) : fallback; }
     catch { return fallback; }
   }
+  function ensureArray(value, fallback) { return Array.isArray(value) ? value : fallback; }
   function save() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.transactions));
-    localStorage.setItem(GOALS_KEY, JSON.stringify(state.goals));
-    localStorage.setItem(CATEGORIES_KEY, JSON.stringify(state.categories));
+    const transactionsSaved = storageSet(STORAGE_KEY, JSON.stringify(state.transactions));
+    const goalsSaved = storageSet(GOALS_KEY, JSON.stringify(state.goals));
+    const categoriesSaved = storageSet(CATEGORIES_KEY, JSON.stringify(state.categories));
+    return transactionsSaved && goalsSaved && categoriesSaved;
   }
   function saveUI(overrides = {}) {
-    localStorage.setItem(UI_STATE_KEY, JSON.stringify({
+    return storageSet(UI_STATE_KEY, JSON.stringify({
       view: state.view,
       period: state.period,
       anchor: toISO(state.anchor),
@@ -183,7 +293,7 @@
     const points = type => months.map((month, index) => ({ x: left + chartWidth * index / (months.length - 1), y: top + chartHeight * (1 - month[type] / maximum), value: month[type] }));
     const path = values => values.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
     const incomePoints = points("income"), expensePoints = points("expense");
-    const area = `${path(incomePoints)} L${incomePoints.at(-1).x},${height - bottom} L${incomePoints[0].x},${height - bottom} Z`;
+    const area = `${path(incomePoints)} L${incomePoints[incomePoints.length - 1].x},${height - bottom} L${incomePoints[0].x},${height - bottom} Z`;
     const ticks = [1, .75, .5, .25, 0];
     target.innerHTML = `<svg class="trend-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Comparação de entradas e despesas dos últimos seis meses"><defs><linearGradient id="incomeArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0FFCBE" stop-opacity=".22"/><stop offset="1" stop-color="#0FFCBE" stop-opacity="0"/></linearGradient></defs>${ticks.map(tick => { const y = top + chartHeight * (1 - tick); return `<line class="chart-gridline" x1="${left}" x2="${width - right}" y1="${y}" y2="${y}"/><text class="axis-label" x="${left - 12}" y="${y + 3}" text-anchor="end">${shortMoney.format(maximum * tick)}</text>`; }).join("")}<path class="chart-area-fill" d="${area}"/><path class="chart-line expense-line" d="${path(expensePoints)}"/><path class="chart-line income-line" d="${path(incomePoints)}"/>${incomePoints.map((point, index) => `<g><circle class="chart-point income-point" cx="${point.x}" cy="${point.y}" r="4"><title>Entradas em ${months[index].label}: ${money.format(point.value)}</title></circle><text class="month-label" x="${point.x}" y="${height - 12}" text-anchor="middle">${months[index].label}</text></g>`).join("")}${expensePoints.map((point, index) => `<circle class="chart-point expense-point" cx="${point.x}" cy="${point.y}" r="4"><title>Despesas em ${months[index].label}: ${money.format(point.value)}</title></circle>`).join("")}</svg>`;
   }
@@ -250,7 +360,7 @@
     saveUI();
     document.querySelector("#transactionModalTitle").textContent = type === "income" ? "Registrar entrada" : "Registrar despesa";
     document.querySelector("#fixedField").classList.toggle("hidden", type === "income");
-    const form = document.querySelector("#transactionForm"); form.reset(); form.elements.date.value = toISO(new Date());
+    const form = document.querySelector("#transactionForm"); form.reset(); form.elements.amount.setCustomValidity(""); form.elements.amount.dataset.moneyFormatted = ""; form.elements.date.value = toISO(new Date());
     renderTransactionCategories();
     closeCategoryField();
     document.querySelector("#transactionModal").classList.remove("hidden");
@@ -285,12 +395,21 @@
     const element = document.querySelector("#toast"); element.innerHTML = `<span>✓</span>${escapeHTML(message)}`; element.classList.remove("hidden");
     clearTimeout(toast.timer); toast.timer = setTimeout(() => element.classList.add("hidden"), 2800);
   }
+  function applyTheme(theme) {
+    const isDark = theme === "dark";
+    document.querySelector("#app").classList.toggle("dark", isDark);
+    document.body.classList.toggle("dark", isDark);
+    const button = document.querySelector("#themeBtn");
+    button.setAttribute("aria-pressed", String(isDark));
+    button.setAttribute("aria-label", isDark ? "Ativar tema claro" : "Ativar tema escuro");
+    button.querySelector("use").setAttribute("href", isDark ? "#icon-sun" : "#icon-moon");
+  }
   function download(content, filename, type) {
     const url = URL.createObjectURL(new Blob([content], { type })); const link = document.createElement("a"); link.href = url; link.download = filename; link.click(); URL.revokeObjectURL(url);
   }
   function exportCSV() {
     const rows = [["Data", "Tipo", "Descrição", "Categoria", "Conta", "Valor"], ...state.transactions.map(item => [item.date, item.type === "income" ? "Entrada" : "Despesa", item.title, item.category, item.account, Number(item.amount).toFixed(2)])];
-    const csv = rows.map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(";")).join("\n");
+    const csv = rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(";")).join("\n");
     download("\ufeff" + csv, `meu-dinheiro-${toISO(new Date())}.csv`, "text/csv;charset=utf-8"); toast("Planilha exportada");
   }
 
@@ -319,10 +438,34 @@
   document.querySelector("#newCategoryName").addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); createCategory(); } });
   document.querySelectorAll(".search-input").forEach(input => input.addEventListener("input", event => { state.search = event.target.value; document.querySelectorAll(".search-input").forEach(other => { if (other !== event.target) other.value = state.search; }); render(); saveUI(); }));
   document.querySelector("#transactionForm").addEventListener("submit", event => {
-    event.preventDefault(); const data = new FormData(event.currentTarget); const recurring = data.get("recurring") === "on";
-    state.transactions.unshift({ id: uid(), title: data.get("title").trim(), amount: Number(data.get("amount")), type: state.transactionType, category: data.get("category"), date: data.get("date"), account: data.get("account"), note: data.get("note").trim(), recurring, paid: recurring ? false : true });
-    save(); closeModals(); render(); toast(state.transactionType === "income" ? "Entrada registrada com sucesso" : "Despesa registrada com sucesso");
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const amount = parseMoney(data.get("amount"));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      form.elements.amount.setCustomValidity("Informe um valor maior que zero. Use, por exemplo, 1234,56.");
+      form.elements.amount.reportValidity();
+      form.elements.amount.focus();
+      return;
+    }
+
+    form.elements.amount.setCustomValidity("");
+    const recurring = data.get("recurring") === "on";
+    state.transactions.unshift({ id: uid(), title: String(data.get("title") || "").trim(), amount, type: state.transactionType, category: data.get("category"), date: data.get("date"), account: String(data.get("account") || "").trim(), note: String(data.get("note") || "").trim(), recurring, paid: recurring ? false : true });
+    const persisted = save();
+    closeModals();
+    render();
+    if (persisted) toast(state.transactionType === "income" ? "Entrada registrada com sucesso" : "Despesa registrada com sucesso");
+    else toast("Lançamento registrado nesta sessão. O navegador bloqueou o armazenamento local.");
   });
+  const transactionAmountInput = document.querySelector("#transactionForm").elements.amount;
+  transactionAmountInput.addEventListener("input", event => {
+    event.currentTarget.setCustomValidity("");
+    const previousValue = event.currentTarget.dataset.moneyFormatted || "";
+    const deletingGroupedInteger = event.inputType?.startsWith("delete") && previousValue.includes(".") && !previousValue.includes(",");
+    formatMoneyField(event.currentTarget, false, deletingGroupedInteger);
+  });
+  transactionAmountInput.addEventListener("blur", event => formatMoneyField(event.currentTarget, true));
   document.querySelector("#goalForm").addEventListener("submit", event => {
     event.preventDefault(); const data = new FormData(event.currentTarget); state.goals.push({ id: uid(), title: data.get("title").trim(), target: Number(data.get("target")), saved: Number(data.get("saved") || 0), color: goalColors[state.goals.length % goalColors.length] }); save(); closeModals(); event.currentTarget.reset(); render(); toast("Meta criada com sucesso");
   });
@@ -343,7 +486,11 @@
     else state.anchor.setFullYear(state.anchor.getFullYear() + direction);
     state.anchor = new Date(state.anchor); render(); saveUI();
   }
-  document.querySelector("#themeBtn").addEventListener("click", () => { document.querySelector("#app").classList.toggle("dark"); localStorage.setItem(THEME_KEY, document.querySelector("#app").classList.contains("dark") ? "dark" : "light"); });
+  document.querySelector("#themeBtn").addEventListener("click", () => {
+    const theme = document.querySelector("#app").classList.contains("dark") ? "light" : "dark";
+    applyTheme(theme);
+    storageSet(THEME_KEY, theme);
+  });
   document.querySelector("#openMenu").addEventListener("click", () => { document.querySelector("#sidebar").classList.add("open"); document.querySelector("#scrim").classList.add("active"); });
   ["#closeMenu", "#scrim"].forEach(selector => document.querySelector(selector).addEventListener("click", () => { document.querySelector("#sidebar").classList.remove("open"); document.querySelector("#scrim").classList.remove("active"); }));
   document.querySelector("#openGoal").addEventListener("click", () => document.querySelector("#goalModal").classList.remove("hidden"));
@@ -357,7 +504,7 @@
   let scrollSaveTimer;
   window.addEventListener("scroll", () => { clearTimeout(scrollSaveTimer); scrollSaveTimer = setTimeout(() => saveUI(), 120); }, { passive: true });
   window.addEventListener("beforeunload", () => saveUI());
-  if (localStorage.getItem(THEME_KEY) === "dark") document.querySelector("#app").classList.add("dark");
+  applyTheme(storageGet(THEME_KEY) === "dark" ? "dark" : "light");
   activateView(state.view);
   render();
   setTimeout(() => window.scrollTo({ top: Number.isFinite(savedUI.scrollY) ? savedUI.scrollY : 0, behavior: "auto" }), 80);
