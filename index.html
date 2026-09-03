@@ -65,8 +65,9 @@
         <button class="hamburger" id="openMenu" aria-label="Abrir menu"><svg class="icon"><use href="#icon-menu"></use></svg></button>
         <div class="period-control">
           <button id="prevPeriod" aria-label="Período anterior"><svg class="icon"><use href="#icon-chevron-left"></use></svg></button>
-          <div><span>PERÍODO ATUAL</span><strong id="periodLabel">—</strong></div>
+          <div><span id="periodEyebrow">PERÍODO ATUAL</span><strong id="periodLabel">—</strong></div>
           <button id="nextPeriod" aria-label="Próximo período"><svg class="icon"><use href="#icon-chevron-right"></use></svg></button>
+          <button class="today-button hidden" id="goToday" title="Voltar para hoje">Voltar para dia de hoje</button>
         </div>
         <div class="top-actions"><button class="icon-button" id="themeBtn" aria-label="Ativar tema escuro" aria-pressed="false"><svg class="icon"><use href="#icon-moon"></use></svg></button><button class="primary-btn" data-open-transaction="expense"><svg class="icon"><use href="#icon-plus"></use></svg>Novo lançamento</button></div>
       </header>

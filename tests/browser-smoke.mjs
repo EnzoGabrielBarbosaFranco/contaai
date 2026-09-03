@@ -103,12 +103,13 @@ async function connectDevTools(url) {
   return { command, evaluate, exceptions, close: () => socket.close() };
 }
 
-const fillAndSubmit = (type, title, amount) => `(async () => {
+const fillAndSubmit = (type, title, amount, date = "") => `(async () => {
   document.querySelector('[data-open-transaction="${type}"]').click();
   const form = document.querySelector('#transactionForm');
   form.elements.title.value = ${JSON.stringify(title)};
   form.elements.amount.value = ${JSON.stringify(amount)};
   form.elements.amount.dispatchEvent(new Event('input', { bubbles: true }));
+  if (${JSON.stringify(date)}) form.elements.date.value = ${JSON.stringify(date)};
   form.elements.account.value = 'Conta teste';
   form.requestSubmit();
   await new Promise(resolve => setTimeout(resolve, 50));
@@ -116,7 +117,11 @@ const fillAndSubmit = (type, title, amount) => `(async () => {
     modalClosed: document.querySelector('#transactionModal').classList.contains('hidden'),
     amountError: form.elements.amount.validationMessage,
     saved: JSON.parse(localStorage.getItem('contaai-transactions-v2') || '[]'),
-    toast: document.querySelector('#toast').textContent
+    toast: document.querySelector('#toast').textContent,
+    recentText: document.querySelector('#recentTransactions').textContent,
+    periodLabel: document.querySelector('#periodLabel').textContent,
+    typeFilter: document.querySelector('#typeFilter').value,
+    categoryFilter: document.querySelector('#categoryFilter').value
   };
 })()`;
 
@@ -143,6 +148,25 @@ async function runBrowser(name, executable, appUrl) {
       const ready = await devTools.evaluate("document.readyState === 'complete' && Boolean(document.querySelector('#transactionForm'))");
       if (!ready) throw new Error("Página ainda não recarregou");
     });
+
+    const todayShortcut = await devTools.evaluate(`(() => {
+      document.querySelector('[data-period="day"]').click();
+      document.querySelector('#prevPeriod').click();
+      const button = document.querySelector('#goToday');
+      const shownAfterNavigating = !button.classList.contains('hidden');
+      const historicalEyebrow = document.querySelector('#periodEyebrow').textContent;
+      button.click();
+      const savedUI = JSON.parse(localStorage.getItem('contaai-ui-state-v1') || '{}');
+      return {
+        shownAfterNavigating,
+        historicalEyebrow,
+        hiddenAfterReturning: button.classList.contains('hidden'),
+        currentEyebrow: document.querySelector('#periodEyebrow').textContent,
+        returnedToToday: savedUI.anchor === new Date().toLocaleDateString('sv-SE')
+      };
+    })()`);
+    assert(todayShortcut.shownAfterNavigating && todayShortcut.historicalEyebrow === "PERÍODO SELECIONADO", `${name}: o botão Hoje não apareceu fora do período atual`);
+    assert(todayShortcut.hiddenAfterReturning && todayShortcut.currentEyebrow === "PERÍODO ATUAL" && todayShortcut.returnedToToday, `${name}: o botão Hoje não retornou à data atual`);
 
     const formatting = await devTools.evaluate(`(() => {
       document.querySelector('[data-open-transaction="income"]').click();
@@ -186,12 +210,13 @@ async function runBrowser(name, executable, appUrl) {
     assert(darkMode.footerVisible, `${name}: o rodapé lateral ficou cortado em 1354x650`);
 
     if (process.argv.includes("--screenshots") && name === "Chrome") {
-      await devTools.evaluate("document.querySelector('#themeBtn').click(); new Promise(resolve => setTimeout(() => resolve(true), 350))");
+      await devTools.evaluate("document.querySelector('#themeBtn').click(); document.querySelector('#prevPeriod').click(); new Promise(resolve => setTimeout(() => resolve(true), 350))");
       const dashboardShot = await devTools.command("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
       const dashboardPath = resolve(tmpdir(), "contaai-dark-dashboard.png");
       await writeFile(dashboardPath, Buffer.from(dashboardShot.data, "base64"));
 
       await devTools.evaluate(`(async () => {
+        document.querySelector('#goToday').click();
         document.querySelector('[data-open-transaction="income"]').click();
         const amount = document.querySelector('#transactionForm').elements.amount;
         amount.value = '2000';
@@ -206,6 +231,45 @@ async function runBrowser(name, executable, appUrl) {
       await devTools.evaluate("document.querySelector('#transactionModal .close-modal').click(); document.querySelector('#themeBtn').click(); true");
     }
 
+    await devTools.evaluate(`(() => {
+      const nativeSetItem = Storage.prototype.setItem;
+      localStorage.setItem('contaai-ui-state-v1', JSON.stringify({
+        period: 'day',
+        anchor: '2026-08-18',
+        typeFilter: 'expense',
+        categoryFilter: 'Moradia',
+        search: 'não corresponde',
+        view: 'dashboard',
+        transactionType: 'expense'
+      }));
+      Storage.prototype.setItem = function (key, value) {
+        if (key !== 'contaai-ui-state-v1') nativeSetItem.call(this, key, value);
+      };
+      location.reload();
+      return true;
+    })()`).catch(() => {});
+    await retry(async () => {
+      const ready = await devTools.evaluate("document.readyState === 'complete' && document.querySelector('#periodLabel')?.textContent.includes('18')");
+      if (!ready) throw new Error("O filtro antigo ainda não carregou");
+    });
+    const revealed = await devTools.evaluate(fillAndSubmit("income", "Entrada fora do filtro", "2500", "2026-09-03"));
+    assert(revealed.recentText.includes("Entrada fora do filtro"), `${name}: o lançamento salvo continuou escondido pelo período`);
+    assert(revealed.periodLabel.toLocaleLowerCase("pt-BR").includes("setembro") && revealed.typeFilter === "all" && revealed.categoryFilter === "all", `${name}: os filtros não foram ajustados para revelar o lançamento`);
+
+    await devTools.evaluate(`(() => {
+      const nativeSetItem = Storage.prototype.setItem;
+      localStorage.clear();
+      Storage.prototype.setItem = function (key, value) {
+        if (key !== 'contaai-ui-state-v1') nativeSetItem.call(this, key, value);
+      };
+      location.reload();
+      return true;
+    })()`).catch(() => {});
+    await retry(async () => {
+      const ready = await devTools.evaluate("document.readyState === 'complete' && Boolean(document.querySelector('#transactionForm'))");
+      if (!ready) throw new Error("A página ainda não reiniciou");
+    });
+
     const expense = await devTools.evaluate(fillAndSubmit("expense", "Despesa Chrome", "1.234,56"));
     assert(expense.modalClosed, `${name}: a despesa com vírgula não fechou o modal`);
     assert(expense.saved[0]?.amount === 1234.56 && expense.saved[0]?.type === "expense", `${name}: a despesa foi salva com valor incorreto`);
@@ -217,6 +281,16 @@ async function runBrowser(name, executable, appUrl) {
     const invalid = await devTools.evaluate(fillAndSubmit("expense", "Valor inválido", "abc"));
     assert(!invalid.modalClosed && invalid.saved.length === 2 && invalid.amountError, `${name}: um valor inválido foi aceito`);
     await devTools.evaluate("document.querySelector('#transactionModal .close-modal').click(); true");
+
+    await devTools.evaluate("location.reload(); true").catch(() => {});
+    await retry(async () => {
+      const persisted = await devTools.evaluate(`(() => {
+        const saved = JSON.parse(localStorage.getItem('contaai-transactions-v2') || '[]');
+        const visible = document.querySelector('#recentTransactions')?.textContent || '';
+        return saved.length === 2 && visible.includes('Despesa Chrome') && visible.includes('Entrada Chrome');
+      })()`);
+      if (!persisted) throw new Error("Os lançamentos ainda não reapareceram após recarregar");
+    });
 
     const blockedStorage = await devTools.evaluate(`(async () => {
       window.__originalStorageSetItem = Storage.prototype.setItem;

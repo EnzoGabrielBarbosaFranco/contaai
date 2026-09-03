@@ -847,3 +847,26 @@ body.dark .sidebar-tip button:hover { background: rgba(106, 190, 239, .24); }
   .sidebar-tip p { display: none; }
   .sidebar-tip strong { margin-bottom: 8px; }
 }
+
+/* Atalho contextual para retornar ao período de hoje */
+.period-control > .today-button {
+  width: auto;
+  min-width: 58px;
+  height: 32px;
+  margin-left: 2px;
+  padding: 0 12px;
+  border-color: #9bc9eb;
+  background: #eaf6fe;
+  color: #0c67aa;
+  font-size: 11.5px;
+  font-weight: 750;
+  line-height: 1;
+  white-space: nowrap;
+}
+.period-control > .today-button:hover { border-color: #55a8df; background: #dceffd; color: #084f86; }
+body.dark .period-control > .today-button { border-color: rgba(25, 228, 179, .45); background: rgba(25, 228, 179, .11); color: #60f0ce; }
+body.dark .period-control > .today-button:hover { border-color: #19e4b3; background: rgba(25, 228, 179, .19); color: #d9fff5; }
+
+@media (max-width: 600px) {
+  .period-control > .today-button { min-width: 46px; height: 28px; padding: 0 8px; font-size: 10.5px; }
+}

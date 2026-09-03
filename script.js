@@ -203,6 +203,21 @@
       .filter(item => !search || `${item.title} ${item.category} ${item.account}`.toLocaleLowerCase("pt-BR").includes(search))
       .sort((a, b) => b.date.localeCompare(a.date));
   }
+  function revealTransaction(item) {
+    const itemDate = parseDate(item.date);
+    if (!inPeriod(itemDate, state.period, state.anchor)) {
+      if (state.period === "range") {
+        if (item.date < state.rangeStart) state.rangeStart = item.date;
+        if (item.date > state.rangeEnd) state.rangeEnd = item.date;
+      } else state.anchor = itemDate;
+    }
+
+    if (state.typeFilter !== "all" && state.typeFilter !== item.type) state.typeFilter = "all";
+    if (state.categoryFilter !== "all" && state.categoryFilter !== item.category) state.categoryFilter = "all";
+    const search = state.search.toLocaleLowerCase("pt-BR");
+    const searchableText = `${item.title} ${item.category} ${item.account}`.toLocaleLowerCase("pt-BR");
+    if (search && !searchableText.includes(search)) state.search = "";
+  }
   function totals(items) {
     const income = items.filter(item => item.type === "income").reduce((sum, item) => sum + Number(item.amount), 0);
     const expenses = items.filter(item => item.type === "expense").reduce((sum, item) => sum + Number(item.amount), 0);
@@ -241,6 +256,9 @@
     else if (state.period === "year") label = String(state.anchor.getFullYear());
     else label = state.anchor.toLocaleDateString("pt-BR", options);
     document.querySelector("#periodLabel").textContent = label;
+    const viewingToday = inPeriod(new Date(), state.period, state.anchor);
+    document.querySelector("#periodEyebrow").textContent = viewingToday ? "PERÍODO ATUAL" : "PERÍODO SELECIONADO";
+    document.querySelector("#goToday").classList.toggle("hidden", viewingToday);
   }
   function renderTabs() {
     const labels = { day: "Dia", week: "Semana", month: "Mês", year: "Ano", range: "Datas" };
@@ -262,9 +280,9 @@
     const incomeCount = items.filter(item => item.type === "income").length;
     const expenseCount = items.filter(item => item.type === "expense").length;
     const cards = [
-      ["Saldo do período", total.balance, "balance", items.length ? (total.balance >= 0 ? "Entradas menos despesas" : "Despesas acima das entradas") : "Sem movimentações"],
-      ["Entradas", total.income, "income", incomeCount ? `${incomeCount} ${incomeCount === 1 ? "recebimento" : "recebimentos"}` : "Nenhuma entrada"],
-      ["Despesas", total.expenses, "expense", expenseCount ? `${expenseCount} ${expenseCount === 1 ? "pagamento" : "pagamentos"}` : "Nenhuma despesa"],
+      ["Saldo do período", total.balance, "balance", items.length ? (total.balance >= 0 ? "Entradas menos despesas" : "Despesas acima das entradas") : (state.transactions.length ? "Sem movimentações neste filtro" : "Sem movimentações")],
+      ["Entradas", total.income, "income", incomeCount ? `${incomeCount} ${incomeCount === 1 ? "recebimento" : "recebimentos"}` : "Nenhuma entrada no período"],
+      ["Despesas", total.expenses, "expense", expenseCount ? `${expenseCount} ${expenseCount === 1 ? "pagamento" : "pagamentos"}` : "Nenhuma despesa no período"],
       ["Taxa de economia", total.income ? total.savings : null, "savings", total.income ? "Percentual da renda preservado" : "Disponível após registrar renda"]
     ];
     const html = cards.map(([label, value, tone, detail]) => `<article class="summary-card ${tone}"><div class="summary-icon">${icons[tone]}</div><div class="summary-copy"><span>${label}</span><strong>${tone === "savings" ? (value === null ? "—" : `${value}%`) : money.format(value)}</strong><small>${detail}</small></div></article>`).join("");
@@ -313,9 +331,10 @@
     return `<div class="transaction-row"><div class="transaction-symbol" style="background:${colors[item.category] || colors.Outros}18;color:${colors[item.category] || colors.Outros}">${icon(item.type === "income" ? "arrow-up-right" : "arrow-down-right")}</div><div class="transaction-main"><strong>${escapeHTML(item.title)}</strong><span>${escapeHTML(item.category)} · ${escapeHTML(item.account)}</span></div><time>${parseDate(item.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</time><span class="transaction-category">${escapeHTML(item.category)}</span><strong class="amount ${item.type === "income" ? "income-text" : "expense-text"}">${sign}${money.format(item.amount)}</strong><button class="delete-button" data-delete="${item.id}" aria-label="Excluir lançamento">${icon("trash")}</button></div>`;
   }
   function renderTransactions(items) {
-    document.querySelector("#recentTransactions").innerHTML = items.length ? items.slice(0, 6).map(transactionRow).join("") : empty("Nenhum lançamento encontrado.");
+    const emptyDetail = state.transactions.length ? "Existem lançamentos salvos fora do período ou dos filtros selecionados." : "Registre uma entrada ou despesa para começar.";
+    document.querySelector("#recentTransactions").innerHTML = items.length ? items.slice(0, 6).map(transactionRow).join("") : empty("Nenhum lançamento neste período.", emptyDetail);
     document.querySelector("#transactionCount").textContent = `${items.length} ${items.length === 1 ? "lançamento" : "lançamentos"}`;
-    document.querySelector("#allTransactions").innerHTML = items.length ? `<div class="table-head"><span>Lançamento</span><span>Data</span><span>Categoria</span><span>Valor</span><span></span></div>${items.map(transactionRow).join("")}` : empty("Nenhum lançamento encontrado para este filtro.");
+    document.querySelector("#allTransactions").innerHTML = items.length ? `<div class="table-head"><span>Lançamento</span><span>Data</span><span>Categoria</span><span>Valor</span><span></span></div>${items.map(transactionRow).join("")}` : empty("Nenhum lançamento neste período.", emptyDetail);
   }
   function renderInsights(categoryGroups, total) {
     const top = categoryGroups[0];
@@ -451,8 +470,11 @@
 
     form.elements.amount.setCustomValidity("");
     const recurring = data.get("recurring") === "on";
-    state.transactions.unshift({ id: uid(), title: String(data.get("title") || "").trim(), amount, type: state.transactionType, category: data.get("category"), date: data.get("date"), account: String(data.get("account") || "").trim(), note: String(data.get("note") || "").trim(), recurring, paid: recurring ? false : true });
+    const transaction = { id: uid(), title: String(data.get("title") || "").trim(), amount, type: state.transactionType, category: data.get("category"), date: data.get("date"), account: String(data.get("account") || "").trim(), note: String(data.get("note") || "").trim(), recurring, paid: recurring ? false : true };
+    state.transactions.unshift(transaction);
+    revealTransaction(transaction);
     const persisted = save();
+    saveUI();
     closeModals();
     render();
     if (persisted) toast(state.transactionType === "income" ? "Entrada registrada com sucesso" : "Despesa registrada com sucesso");
@@ -474,6 +496,19 @@
   });
   document.querySelector("#prevPeriod").addEventListener("click", () => movePeriod(-1));
   document.querySelector("#nextPeriod").addEventListener("click", () => movePeriod(1));
+  document.querySelector("#goToday").addEventListener("click", () => {
+    const currentDate = new Date();
+    if (state.period === "range") {
+      const start = parseDate(state.rangeStart), end = parseDate(state.rangeEnd);
+      const span = Math.round((end - start) / 86400000) + 1;
+      const newStart = new Date(currentDate);
+      newStart.setDate(currentDate.getDate() - span + 1);
+      state.rangeStart = toISO(newStart);
+      state.rangeEnd = toISO(currentDate);
+    } else state.anchor = currentDate;
+    render();
+    saveUI();
+  });
   function movePeriod(direction) {
     if (state.period === "range") {
       const start = parseDate(state.rangeStart), end = parseDate(state.rangeEnd);
