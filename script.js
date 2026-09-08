@@ -328,7 +328,8 @@
   }
   function transactionRow(item) {
     const sign = item.type === "income" ? "+" : "−";
-    return `<div class="transaction-row"><div class="transaction-symbol" style="background:${colors[item.category] || colors.Outros}18;color:${colors[item.category] || colors.Outros}">${icon(item.type === "income" ? "arrow-up-right" : "arrow-down-right")}</div><div class="transaction-main"><strong>${escapeHTML(item.title)}</strong><span>${escapeHTML(item.category)} · ${escapeHTML(item.account)}</span></div><time>${parseDate(item.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</time><span class="transaction-category">${escapeHTML(item.category)}</span><strong class="amount ${item.type === "income" ? "income-text" : "expense-text"}">${sign}${money.format(item.amount)}</strong><button class="delete-button" data-delete="${item.id}" aria-label="Excluir lançamento">${icon("trash")}</button></div>`;
+    const id = escapeHTML(item.id);
+    return `<div class="transaction-row"><div class="transaction-symbol" style="background:${colors[item.category] || colors.Outros}18;color:${colors[item.category] || colors.Outros}">${icon(item.type === "income" ? "arrow-up-right" : "arrow-down-right")}</div><div class="transaction-main"><strong>${escapeHTML(item.title)}</strong><span>${escapeHTML(item.category)} · ${escapeHTML(item.account)}</span></div><time>${parseDate(item.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</time><span class="transaction-category">${escapeHTML(item.category)}</span><strong class="amount ${item.type === "income" ? "income-text" : "expense-text"}">${sign}${money.format(item.amount)}</strong><div class="transaction-actions"><button class="edit-button" data-edit="${id}" aria-label="Editar lançamento" title="Editar lançamento">${icon("edit")}</button><button class="delete-button" data-delete="${id}" aria-label="Excluir lançamento" title="Excluir lançamento">${icon("trash")}</button></div></div>`;
   }
   function renderTransactions(items) {
     const emptyDetail = state.transactions.length ? "Existem lançamentos salvos fora do período ou dos filtros selecionados." : "Registre uma entrada ou despesa para começar.";
@@ -354,7 +355,7 @@
     const paid = items.filter(item => item.paid).reduce((sum, item) => sum + Number(item.amount), 0);
     document.querySelector("#fixedCount").textContent = items.length;
     document.querySelector("#fixedSummary").innerHTML = `<div><span>Comprometido no mês</span><strong>${money.format(committed)}</strong></div><div><span>Já pago</span><strong>${money.format(paid)}</strong></div><div><span>Falta pagar</span><strong>${money.format(committed - paid)}</strong></div><div class="fixed-progress"><span style="width:${committed ? paid / committed * 100 : 0}%"></span></div>`;
-    document.querySelector("#recurringGrid").innerHTML = items.length ? items.map(item => `<div class="recurring-card ${item.paid ? "paid" : ""}"><div class="recurring-top"><span class="category-icon" style="color:${colors[item.category]};background:${colors[item.category]}18">${icon("repeat")}</span><button data-delete="${item.id}" aria-label="Excluir">${icon("trash")}</button></div><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.category)} · todo mês</small><b>${money.format(item.amount)}</b><label><input type="checkbox" data-toggle-paid="${item.id}" ${item.paid ? "checked" : ""}><span>${item.paid ? "Pago" : "Marcar como pago"}</span></label></div>`).join("") : empty("Nenhum gasto fixo cadastrado", "Cadastre uma despesa e marque-a como gasto fixo.");
+    document.querySelector("#recurringGrid").innerHTML = items.length ? items.map(item => { const id = escapeHTML(item.id); return `<div class="recurring-card ${item.paid ? "paid" : ""}"><div class="recurring-top"><span class="category-icon" style="color:${colors[item.category] || colors.Outros};background:${colors[item.category] || colors.Outros}18">${icon("repeat")}</span><div class="recurring-actions"><button class="edit-button" data-edit="${id}" aria-label="Editar gasto fixo" title="Editar gasto fixo">${icon("edit")}</button><button class="delete-button" data-delete="${id}" aria-label="Excluir gasto fixo" title="Excluir gasto fixo">${icon("trash")}</button></div></div><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.category)} · todo mês</small><b>${money.format(item.amount)}</b><label><input type="checkbox" data-toggle-paid="${id}" ${item.paid ? "checked" : ""}><span>${item.paid ? "Pago" : "Marcar como pago"}</span></label></div>`; }).join("") : empty("Nenhum gasto fixo cadastrado", "Cadastre uma despesa e marque-a como gasto fixo.");
   }
   function renderGoals() {
     const target = document.querySelector("#goalsGrid");
@@ -375,15 +376,63 @@
     saveUI({ scrollY: 0 });
   }
   function openTransaction(type) {
-    state.transactionType = type;
+    const form = document.querySelector("#transactionForm");
+    form.reset();
+    form.dataset.editingId = "";
+    form.elements.amount.setCustomValidity("");
+    form.elements.amount.dataset.moneyFormatted = "";
+    form.elements.date.value = toISO(new Date());
+    setTransactionType(type);
+    updateTransactionModalHeading();
     saveUI();
-    document.querySelector("#transactionModalTitle").textContent = type === "income" ? "Registrar entrada" : "Registrar despesa";
-    document.querySelector("#fixedField").classList.toggle("hidden", type === "income");
-    const form = document.querySelector("#transactionForm"); form.reset(); form.elements.amount.setCustomValidity(""); form.elements.amount.dataset.moneyFormatted = ""; form.elements.date.value = toISO(new Date());
-    renderTransactionCategories();
     closeCategoryField();
     document.querySelector("#transactionModal").classList.remove("hidden");
     setTimeout(() => form.elements.title.focus(), 50);
+  }
+  function editTransaction(id) {
+    const transaction = state.transactions.find(item => item.id === id);
+    if (!transaction) { toast("Não foi possível encontrar este lançamento"); return; }
+
+    const form = document.querySelector("#transactionForm");
+    form.reset();
+    form.dataset.editingId = transaction.id;
+    form.elements.amount.setCustomValidity("");
+    form.elements.title.value = transaction.title;
+    form.elements.amount.value = formatMoneyValue(String(transaction.amount).replace(".", ","), true);
+    form.elements.amount.dataset.moneyFormatted = form.elements.amount.value;
+    form.elements.date.value = transaction.date;
+    form.elements.account.value = transaction.account;
+    form.elements.note.value = transaction.note || "";
+    form.elements.recurring.checked = Boolean(transaction.recurring);
+    form.elements.paid.checked = Boolean(transaction.paid);
+    setTransactionType(transaction.type, transaction.category);
+    updateTransactionModalHeading();
+    saveUI();
+    closeCategoryField();
+    document.querySelector("#transactionModal").classList.remove("hidden");
+    setTimeout(() => form.elements.title.focus(), 50);
+  }
+  function updateTransactionModalHeading() {
+    const form = document.querySelector("#transactionForm");
+    const editing = Boolean(form.dataset.editingId);
+    document.querySelector("#transactionModalEyebrow").textContent = editing ? "EDITAR LANÇAMENTO" : "NOVO LANÇAMENTO";
+    document.querySelector("#transactionModalTitle").textContent = editing ? "Editar lançamento" : state.transactionType === "income" ? "Registrar entrada" : "Registrar despesa";
+    document.querySelector("#transactionSubmit").textContent = editing ? "Salvar alterações" : "Salvar lançamento";
+  }
+  function setTransactionType(type, selectedCategory = "") {
+    const form = document.querySelector("#transactionForm");
+    state.transactionType = type === "income" ? "income" : "expense";
+    form.elements.type.value = state.transactionType;
+    if (state.transactionType === "income") form.elements.recurring.checked = false;
+    document.querySelector("#fixedField").classList.toggle("hidden", state.transactionType === "income");
+    renderTransactionCategories(selectedCategory);
+    syncRecurringFields();
+    updateTransactionModalHeading();
+  }
+  function syncRecurringFields() {
+    const form = document.querySelector("#transactionForm");
+    const isRecurringExpense = state.transactionType === "expense" && form.elements.recurring.checked;
+    document.querySelector("#paidField").classList.toggle("hidden", !isRecurringExpense);
   }
   function renderTransactionCategories(selected = "") {
     const allowed = state.categories.filter(category => category.type === state.transactionType || category.type === "both");
@@ -437,6 +486,7 @@
     if (button.dataset.view) switchView(button.dataset.view);
     if (button.dataset.goView) switchView(button.dataset.goView);
     if (button.dataset.openTransaction) openTransaction(button.dataset.openTransaction);
+    if (button.dataset.edit) editTransaction(button.dataset.edit);
     if (button.dataset.period) { state.period = button.dataset.period; render(); saveUI(); }
     if (button.id === "openCategoryField") { document.querySelector("#categoryCreateField").classList.remove("hidden"); setTimeout(() => document.querySelector("#newCategoryName").focus(), 0); }
     if (button.id === "cancelCategory") closeCategoryField();
@@ -449,6 +499,8 @@
   });
   document.addEventListener("change", event => {
     if (event.target.matches("[data-toggle-paid]")) { state.transactions = state.transactions.map(item => item.id === event.target.dataset.togglePaid ? { ...item, paid: event.target.checked } : item); save(); render(); }
+    if (event.target.id === "transactionTypeSelect") setTransactionType(event.target.value, document.querySelector("#categorySelect").value);
+    if (event.target.matches("#transactionForm [name='recurring']")) syncRecurringFields();
     if (event.target.id === "typeFilter") { state.typeFilter = event.target.value; render(); saveUI(); }
     if (event.target.id === "categoryFilter") { state.categoryFilter = event.target.value; render(); saveUI(); }
     if (event.target.matches("[data-range-start]")) { if (!event.target.value) { render(); return; } state.rangeStart = event.target.value; if (state.rangeStart > state.rangeEnd) state.rangeEnd = state.rangeStart; render(); saveUI(); }
@@ -469,16 +521,24 @@
     }
 
     form.elements.amount.setCustomValidity("");
-    const recurring = data.get("recurring") === "on";
-    const transaction = { id: uid(), title: String(data.get("title") || "").trim(), amount, type: state.transactionType, category: data.get("category"), date: data.get("date"), account: String(data.get("account") || "").trim(), note: String(data.get("note") || "").trim(), recurring, paid: recurring ? false : true };
-    state.transactions.unshift(transaction);
+    const type = data.get("type") === "income" ? "income" : "expense";
+    state.transactionType = type;
+    const recurring = type === "expense" && data.get("recurring") === "on";
+    const paid = recurring ? data.get("paid") === "on" : true;
+    const editingId = form.dataset.editingId;
+    const editingIndex = editingId ? state.transactions.findIndex(item => item.id === editingId) : -1;
+    if (editingId && editingIndex < 0) { closeModals(); toast("Não foi possível encontrar este lançamento"); return; }
+    const previous = editingIndex >= 0 ? state.transactions[editingIndex] : {};
+    const transaction = { ...previous, id: editingId || uid(), title: String(data.get("title") || "").trim(), amount, type, category: data.get("category"), date: data.get("date"), account: String(data.get("account") || "").trim(), note: String(data.get("note") || "").trim(), recurring, paid };
+    if (editingIndex >= 0) state.transactions[editingIndex] = transaction;
+    else state.transactions.unshift(transaction);
     revealTransaction(transaction);
     const persisted = save();
     saveUI();
     closeModals();
     render();
-    if (persisted) toast(state.transactionType === "income" ? "Entrada registrada com sucesso" : "Despesa registrada com sucesso");
-    else toast("Lançamento registrado nesta sessão. O navegador bloqueou o armazenamento local.");
+    if (persisted) toast(editingIndex >= 0 ? "Lançamento atualizado com sucesso" : state.transactionType === "income" ? "Entrada registrada com sucesso" : "Despesa registrada com sucesso");
+    else toast(`${editingIndex >= 0 ? "Lançamento atualizado" : "Lançamento registrado"} nesta sessão. O navegador bloqueou o armazenamento local.`);
   });
   const transactionAmountInput = document.querySelector("#transactionForm").elements.amount;
   transactionAmountInput.addEventListener("input", event => {

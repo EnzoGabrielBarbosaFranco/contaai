@@ -278,6 +278,49 @@ async function runBrowser(name, executable, appUrl) {
     assert(income.modalClosed, `${name}: a entrada com ponto não fechou o modal`);
     assert(income.saved[0]?.amount === 987.65 && income.saved[0]?.type === "income", `${name}: a entrada foi salva com valor incorreto`);
 
+    const editing = await devTools.evaluate(`(async () => {
+      const before = JSON.parse(localStorage.getItem('contaai-transactions-v2') || '[]');
+      const original = before.find(item => item.title === 'Entrada Chrome');
+      document.querySelector('[data-edit="' + original.id + '"]').click();
+      const form = document.querySelector('#transactionForm');
+      const prefilled = {
+        title: form.elements.title.value,
+        amount: form.elements.amount.value,
+        type: form.elements.type.value,
+        account: form.elements.account.value,
+        heading: document.querySelector('#transactionModalTitle').textContent
+      };
+      form.elements.title.value = 'Lançamento editado';
+      form.elements.amount.value = '2.345,67';
+      form.elements.amount.dispatchEvent(new Event('input', { bubbles: true }));
+      form.elements.type.value = 'expense';
+      form.elements.type.dispatchEvent(new Event('change', { bubbles: true }));
+      form.elements.category.value = 'Moradia';
+      form.elements.date.value = new Date().toLocaleDateString('sv-SE');
+      form.elements.account.value = 'Cartão principal';
+      form.elements.note.value = 'Observação atualizada';
+      form.elements.recurring.checked = true;
+      form.elements.recurring.dispatchEvent(new Event('change', { bubbles: true }));
+      form.elements.paid.checked = true;
+      form.requestSubmit();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      const saved = JSON.parse(localStorage.getItem('contaai-transactions-v2') || '[]');
+      return {
+        prefilled,
+        originalId: original.id,
+        saved,
+        edited: saved.find(item => item.id === original.id),
+        modalClosed: document.querySelector('#transactionModal').classList.contains('hidden'),
+        toast: document.querySelector('#toast').textContent,
+        recurringEditAvailable: Boolean(document.querySelector('#recurringGrid [data-edit="' + original.id + '"]'))
+      };
+    })()`);
+    assert(editing.prefilled.title === "Entrada Chrome" && editing.prefilled.amount === "987,65" && editing.prefilled.type === "income" && editing.prefilled.account === "Conta teste" && editing.prefilled.heading === "Editar lançamento", `${name}: os dados do lançamento não foram preenchidos para edição`);
+    assert(editing.saved.length === 2 && editing.edited?.id === editing.originalId, `${name}: a edição criou outro lançamento ou alterou o identificador`);
+    assert(editing.edited?.title === "Lançamento editado" && editing.edited?.amount === 2345.67 && editing.edited?.type === "expense" && editing.edited?.category === "Moradia", `${name}: os dados principais da edição não foram salvos`);
+    assert(editing.edited?.account === "Cartão principal" && editing.edited?.note === "Observação atualizada" && editing.edited?.recurring === true && editing.edited?.paid === true, `${name}: conta, observação ou dados do gasto fixo não foram atualizados`);
+    assert(editing.modalClosed && editing.toast.includes("atualizado") && editing.recurringEditAvailable, `${name}: o retorno visual da edição ou o atalho do gasto fixo falhou`);
+
     const invalid = await devTools.evaluate(fillAndSubmit("expense", "Valor inválido", "abc"));
     assert(!invalid.modalClosed && invalid.saved.length === 2 && invalid.amountError, `${name}: um valor inválido foi aceito`);
     await devTools.evaluate("document.querySelector('#transactionModal .close-modal').click(); true");
@@ -287,7 +330,7 @@ async function runBrowser(name, executable, appUrl) {
       const persisted = await devTools.evaluate(`(() => {
         const saved = JSON.parse(localStorage.getItem('contaai-transactions-v2') || '[]');
         const visible = document.querySelector('#recentTransactions')?.textContent || '';
-        return saved.length === 2 && visible.includes('Despesa Chrome') && visible.includes('Entrada Chrome');
+        return saved.length === 2 && visible.includes('Despesa Chrome') && visible.includes('Lançamento editado');
       })()`);
       if (!persisted) throw new Error("Os lançamentos ainda não reapareceram após recarregar");
     });
@@ -322,7 +365,7 @@ async function runBrowser(name, executable, appUrl) {
     devTools?.close();
     const taskkill = spawn("taskkill", ["/pid", String(browser.pid), "/T", "/F"], { stdio: "ignore" });
     await new Promise(resolveExit => taskkill.once("exit", resolveExit));
-    await retry(() => rm(profile, { recursive: true, force: true }), 5000);
+    await retry(() => rm(profile, { recursive: true, force: true }), 5000).catch(() => {});
   }
 }
 
