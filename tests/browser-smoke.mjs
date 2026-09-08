@@ -321,8 +321,100 @@ async function runBrowser(name, executable, appUrl) {
     assert(editing.edited?.account === "Cartão principal" && editing.edited?.note === "Observação atualizada" && editing.edited?.recurring === true && editing.edited?.paid === true, `${name}: conta, observação ou dados do gasto fixo não foram atualizados`);
     assert(editing.modalClosed && editing.toast.includes("atualizado") && editing.recurringEditAvailable, `${name}: o retorno visual da edição ou o atalho do gasto fixo falhou`);
 
+    const goalEditing = await devTools.evaluate(`(async () => {
+      document.querySelector('#openGoal').click();
+      const form = document.querySelector('#goalForm');
+      form.elements.title.value = 'Reserva de emergência';
+      form.elements.target.value = '10000.50';
+      form.elements.saved.value = '1250.25';
+      form.requestSubmit();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      const created = JSON.parse(localStorage.getItem('contaai-goals-v2') || '[]')[0];
+      const editButton = document.querySelector('[data-edit-goal="' + created.id + '"]');
+      const deleteButton = document.querySelector('[data-delete-goal="' + created.id + '"]');
+      const iconsAlwaysVisible = getComputedStyle(editButton).opacity === '1' && getComputedStyle(deleteButton).opacity === '1';
+      editButton.click();
+      const prefilled = {
+        title: form.elements.title.value,
+        target: Number(form.elements.target.value),
+        saved: Number(form.elements.saved.value),
+        heading: document.querySelector('#goalModalTitle').textContent
+      };
+      form.elements.title.value = 'Reserva atualizada';
+      form.elements.target.value = '15000.75';
+      form.elements.saved.value = '3200.50';
+      form.requestSubmit();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      const goals = JSON.parse(localStorage.getItem('contaai-goals-v2') || '[]');
+      return {
+        prefilled,
+        createdId: created.id,
+        iconsAlwaysVisible,
+        goals,
+        modalClosed: document.querySelector('#goalModal').classList.contains('hidden'),
+        toast: document.querySelector('#toast').textContent,
+        cardText: document.querySelector('#goalsGrid').textContent
+      };
+    })()`);
+    assert(goalEditing.prefilled.title === "Reserva de emergência" && goalEditing.prefilled.target === 10000.5 && goalEditing.prefilled.saved === 1250.25 && goalEditing.prefilled.heading === "Editar meta", `${name}: os valores da meta não foram preenchidos para edição`);
+    assert(goalEditing.goals.length === 1 && goalEditing.goals[0]?.id === goalEditing.createdId, `${name}: a edição duplicou a meta ou alterou seu identificador`);
+    assert(goalEditing.goals[0]?.title === "Reserva atualizada" && goalEditing.goals[0]?.target === 15000.75 && goalEditing.goals[0]?.saved === 3200.5, `${name}: os novos valores da meta não foram salvos`);
+    assert(goalEditing.iconsAlwaysVisible && goalEditing.modalClosed && goalEditing.toast.includes("atualizada") && goalEditing.cardText.includes("Reserva atualizada"), `${name}: a interface de edição da meta não foi atualizada corretamente`);
+
+    const pendingFixed = await devTools.evaluate(`(async () => {
+      const expenseCard = () => document.querySelector('#dashboardView .summary-card.expense strong').textContent;
+      const expenseBefore = expenseCard();
+      document.querySelector('[data-open-transaction="expense"]').click();
+      const form = document.querySelector('#transactionForm');
+      form.elements.title.value = 'Conta fixa pendente';
+      form.elements.amount.value = '300,00';
+      form.elements.amount.dispatchEvent(new Event('input', { bubbles: true }));
+      form.elements.account.value = 'Débito automático';
+      form.elements.recurring.checked = true;
+      form.elements.recurring.dispatchEvent(new Event('change', { bubbles: true }));
+      form.requestSubmit();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      const createdToast = document.querySelector('#toast').textContent;
+      const savedAfterCreation = JSON.parse(localStorage.getItem('contaai-transactions-v2') || '[]');
+      const fixed = savedAfterCreation.find(item => item.title === 'Conta fixa pendente');
+      const pendingState = {
+        expense: expenseCard(),
+        inRecent: document.querySelector('#recentTransactions').textContent.includes(fixed.title),
+        inHistory: document.querySelector('#allTransactions').textContent.includes(fixed.title),
+        inFixedExpenses: document.querySelector('#recurringGrid').textContent.includes(fixed.title)
+      };
+      let checkbox = document.querySelector('[data-toggle-paid="' + fixed.id + '"]');
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise(resolve => setTimeout(resolve, 20));
+      const paidState = {
+        expense: expenseCard(),
+        inRecent: document.querySelector('#recentTransactions').textContent.includes(fixed.title),
+        toast: document.querySelector('#toast').textContent
+      };
+      checkbox = document.querySelector('[data-toggle-paid="' + fixed.id + '"]');
+      checkbox.checked = false;
+      checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise(resolve => setTimeout(resolve, 20));
+      const finalSaved = JSON.parse(localStorage.getItem('contaai-transactions-v2') || '[]');
+      return {
+        expenseBefore,
+        createdToast,
+        fixed,
+        pendingState,
+        paidState,
+        expenseAfterUnmarking: expenseCard(),
+        visibleAfterUnmarking: document.querySelector('#recentTransactions').textContent.includes(fixed.title),
+        finalPaid: finalSaved.find(item => item.id === fixed.id)?.paid
+      };
+    })()`);
+    assert(pendingFixed.fixed?.recurring === true && pendingFixed.fixed?.paid === false && pendingFixed.createdToast.includes("quando for marcado como pago"), `${name}: o gasto fixo pendente não foi cadastrado corretamente`);
+    assert(pendingFixed.pendingState.expense === pendingFixed.expenseBefore && !pendingFixed.pendingState.inRecent && !pendingFixed.pendingState.inHistory && pendingFixed.pendingState.inFixedExpenses, `${name}: o gasto fixo pendente entrou no saldo ou no histórico antes do pagamento`);
+    assert(pendingFixed.paidState.expense !== pendingFixed.expenseBefore && pendingFixed.paidState.inRecent && pendingFixed.paidState.toast.includes("incluído no saldo"), `${name}: o gasto fixo pago não entrou no saldo e no histórico`);
+    assert(pendingFixed.expenseAfterUnmarking === pendingFixed.expenseBefore && !pendingFixed.visibleAfterUnmarking && pendingFixed.finalPaid === false, `${name}: desmarcar o pagamento não removeu o gasto do saldo`);
+
     const invalid = await devTools.evaluate(fillAndSubmit("expense", "Valor inválido", "abc"));
-    assert(!invalid.modalClosed && invalid.saved.length === 2 && invalid.amountError, `${name}: um valor inválido foi aceito`);
+    assert(!invalid.modalClosed && invalid.saved.length === 3 && invalid.amountError, `${name}: um valor inválido foi aceito`);
     await devTools.evaluate("document.querySelector('#transactionModal .close-modal').click(); true");
 
     await devTools.evaluate("location.reload(); true").catch(() => {});
@@ -330,7 +422,7 @@ async function runBrowser(name, executable, appUrl) {
       const persisted = await devTools.evaluate(`(() => {
         const saved = JSON.parse(localStorage.getItem('contaai-transactions-v2') || '[]');
         const visible = document.querySelector('#recentTransactions')?.textContent || '';
-        return saved.length === 2 && visible.includes('Despesa Chrome') && visible.includes('Lançamento editado');
+        return saved.length === 3 && visible.includes('Despesa Chrome') && visible.includes('Lançamento editado') && !visible.includes('Conta fixa pendente');
       })()`);
       if (!persisted) throw new Error("Os lançamentos ainda não reapareceram após recarregar");
     });

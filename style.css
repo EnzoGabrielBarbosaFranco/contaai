@@ -876,26 +876,33 @@ body.dark .period-control > .today-button:hover { border-color: #19e4b3; backgro
 .transaction-table .table-head,
 .transaction-table .transaction-row { grid-template-columns: minmax(220px, 1.4fr) 90px minmax(120px, .7fr) 110px 64px; }
 .transaction-actions,
-.recurring-actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.recurring-actions,
+.goal-actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
 .transaction-actions { grid-column: 5; }
 .edit-button,
 .transaction-actions .delete-button,
-.recurring-actions button { width: 28px; height: 28px; padding: 5px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #91a3af; opacity: 1; transition: color .2s, background .2s; }
+.recurring-actions button,
+.goal-actions button { width: 28px; height: 28px; padding: 5px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #91a3af; opacity: 1; transition: color .2s, background .2s; }
 .transaction-row:hover .transaction-actions button,
 .transaction-actions button:focus-visible,
 .recurring-card:hover .recurring-actions button,
-.recurring-actions button:focus-visible { opacity: 1; }
+.recurring-actions button:focus-visible,
+.goal-actions button:focus-visible { opacity: 1; }
 .edit-button:hover,
-.recurring-actions .edit-button:hover { color: var(--primary); background: rgba(16, 110, 190, .1); }
+.recurring-actions .edit-button:hover,
+.goal-actions .edit-button:hover { color: var(--primary); background: rgba(16, 110, 190, .1); }
 .transaction-actions .delete-button:hover,
-.recurring-actions .delete-button:hover { color: var(--red); background: rgba(212, 95, 89, .09); }
+.recurring-actions .delete-button:hover,
+.goal-actions .delete-button:hover { color: var(--red); background: rgba(212, 95, 89, .09); }
 .edit-button .icon,
 .transaction-actions .delete-button .icon,
-.recurring-actions button .icon { width: 15px; height: 15px; }
+.recurring-actions button .icon,
+.goal-actions button .icon { width: 15px; height: 15px; }
 
 @media (hover: none) {
   .transaction-actions button,
-  .recurring-actions button { opacity: 1; }
+  .recurring-actions button,
+  .goal-actions button { opacity: 1; }
 }
 
 @media (max-width: 820px) {

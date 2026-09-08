@@ -154,7 +154,7 @@
     }));
   if (!state.categories.length) state.categories = defaultCategories.map(category => ({ ...category }));
   state.goals = state.goals.filter(goal => goal && typeof goal === "object")
-    .map((goal, index) => ({ ...goal, title: String(goal.title || "").trim(), target: Number(goal.target), saved: Number(goal.saved), color: goalColors[index % goalColors.length] }))
+    .map((goal, index) => ({ ...goal, id: typeof goal.id === "string" && goal.id ? goal.id : uid(), title: String(goal.title || "").trim(), target: Number(goal.target), saved: Number(goal.saved), color: goal.color || goalColors[index % goalColors.length] }))
     .filter(goal => goal.title && goal.target > 0 && goal.saved >= 0);
   state.categories.forEach(category => { colors[category.name] = category.color || colors.Outros; });
 
@@ -195,9 +195,11 @@
     if (period === "month") return date.getMonth() === anchor.getMonth() && date.getFullYear() === anchor.getFullYear();
     return date.getFullYear() === anchor.getFullYear();
   }
+  function isPostedTransaction(item) { return !item.recurring || item.paid; }
   function filteredTransactions() {
     const search = state.search.toLocaleLowerCase("pt-BR");
-    return state.transactions.filter(item => inPeriod(parseDate(item.date), state.period, state.anchor))
+    return state.transactions.filter(isPostedTransaction)
+      .filter(item => inPeriod(parseDate(item.date), state.period, state.anchor))
       .filter(item => state.typeFilter === "all" || item.type === state.typeFilter)
       .filter(item => state.categoryFilter === "all" || item.category === state.categoryFilter)
       .filter(item => !search || `${item.title} ${item.category} ${item.account}`.toLocaleLowerCase("pt-BR").includes(search))
@@ -280,7 +282,7 @@
     const incomeCount = items.filter(item => item.type === "income").length;
     const expenseCount = items.filter(item => item.type === "expense").length;
     const cards = [
-      ["Saldo do período", total.balance, "balance", items.length ? (total.balance >= 0 ? "Entradas menos despesas" : "Despesas acima das entradas") : (state.transactions.length ? "Sem movimentações neste filtro" : "Sem movimentações")],
+      ["Saldo do período", total.balance, "balance", items.length ? (total.balance >= 0 ? "Entradas menos despesas" : "Despesas acima das entradas") : (state.transactions.some(isPostedTransaction) ? "Sem movimentações neste filtro" : "Sem movimentações pagas")],
       ["Entradas", total.income, "income", incomeCount ? `${incomeCount} ${incomeCount === 1 ? "recebimento" : "recebimentos"}` : "Nenhuma entrada no período"],
       ["Despesas", total.expenses, "expense", expenseCount ? `${expenseCount} ${expenseCount === 1 ? "pagamento" : "pagamentos"}` : "Nenhuma despesa no período"],
       ["Taxa de economia", total.income ? total.savings : null, "savings", total.income ? "Percentual da renda preservado" : "Disponível após registrar renda"]
@@ -290,6 +292,7 @@
   }
   function renderMonthlyChart() {
     const chartItems = state.transactions
+      .filter(isPostedTransaction)
       .filter(item => state.typeFilter === "all" || item.type === state.typeFilter)
       .filter(item => state.categoryFilter === "all" || item.category === state.categoryFilter);
     const months = Array.from({ length: 6 }, (_, index) => {
@@ -332,7 +335,8 @@
     return `<div class="transaction-row"><div class="transaction-symbol" style="background:${colors[item.category] || colors.Outros}18;color:${colors[item.category] || colors.Outros}">${icon(item.type === "income" ? "arrow-up-right" : "arrow-down-right")}</div><div class="transaction-main"><strong>${escapeHTML(item.title)}</strong><span>${escapeHTML(item.category)} · ${escapeHTML(item.account)}</span></div><time>${parseDate(item.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</time><span class="transaction-category">${escapeHTML(item.category)}</span><strong class="amount ${item.type === "income" ? "income-text" : "expense-text"}">${sign}${money.format(item.amount)}</strong><div class="transaction-actions"><button class="edit-button" data-edit="${id}" aria-label="Editar lançamento" title="Editar lançamento">${icon("edit")}</button><button class="delete-button" data-delete="${id}" aria-label="Excluir lançamento" title="Excluir lançamento">${icon("trash")}</button></div></div>`;
   }
   function renderTransactions(items) {
-    const emptyDetail = state.transactions.length ? "Existem lançamentos salvos fora do período ou dos filtros selecionados." : "Registre uma entrada ou despesa para começar.";
+    const hasPendingFixedExpense = state.transactions.some(item => item.recurring && !item.paid);
+    const emptyDetail = hasPendingFixedExpense && !state.transactions.some(isPostedTransaction) ? "Os gastos fixos pendentes aparecerão aqui depois que forem marcados como pagos." : state.transactions.length ? "Existem lançamentos salvos fora do período ou dos filtros selecionados." : "Registre uma entrada ou despesa para começar.";
     document.querySelector("#recentTransactions").innerHTML = items.length ? items.slice(0, 6).map(transactionRow).join("") : empty("Nenhum lançamento neste período.", emptyDetail);
     document.querySelector("#transactionCount").textContent = `${items.length} ${items.length === 1 ? "lançamento" : "lançamentos"}`;
     document.querySelector("#allTransactions").innerHTML = items.length ? `<div class="table-head"><span>Lançamento</span><span>Data</span><span>Categoria</span><span>Valor</span><span></span></div>${items.map(transactionRow).join("")}` : empty("Nenhum lançamento neste período.", emptyDetail);
@@ -359,7 +363,7 @@
   }
   function renderGoals() {
     const target = document.querySelector("#goalsGrid");
-    target.innerHTML = state.goals.length ? state.goals.map(goal => { const percentage = Math.min(100, Math.round(goal.saved / goal.target * 100)); return `<article class="goal-card"><div class="goal-head"><span class="goal-icon" style="background:${goal.color}18;color:${goal.color}">${icon("target")}</span><button data-delete-goal="${goal.id}" aria-label="Excluir meta">${icon("trash")}</button></div><span class="goal-label">OBJETIVO</span><h2>${escapeHTML(goal.title)}</h2><div class="goal-values"><strong>${money.format(goal.saved)}</strong><span>de ${money.format(goal.target)}</span></div><div class="goal-progress"><span style="width:${percentage}%;background:${goal.color}"></span></div><div class="goal-foot"><b>${percentage}% concluído</b><small>Faltam ${money.format(Math.max(0, goal.target - goal.saved))}</small></div><form class="deposit-form" data-goal="${goal.id}"><input type="number" min="1" required placeholder="Valor do aporte"><button>Aportar</button></form></article>`; }).join("") : `<article class="panel full-panel">${empty("Crie sua primeira meta", "Defina um valor e acompanhe os aportes ao longo do tempo.")}</article>`;
+    target.innerHTML = state.goals.length ? state.goals.map(goal => { const percentage = Math.min(100, Math.round(goal.saved / goal.target * 100)); const id = escapeHTML(goal.id); return `<article class="goal-card"><div class="goal-head"><span class="goal-icon" style="background:${goal.color}18;color:${goal.color}">${icon("target")}</span><div class="goal-actions"><button class="edit-button" data-edit-goal="${id}" aria-label="Editar meta" title="Editar meta">${icon("edit")}</button><button class="delete-button" data-delete-goal="${id}" aria-label="Excluir meta" title="Excluir meta">${icon("trash")}</button></div></div><span class="goal-label">OBJETIVO</span><h2>${escapeHTML(goal.title)}</h2><div class="goal-values"><strong>${money.format(goal.saved)}</strong><span>de ${money.format(goal.target)}</span></div><div class="goal-progress"><span style="width:${percentage}%;background:${goal.color}"></span></div><div class="goal-foot"><b>${percentage}% concluído</b><small>Faltam ${money.format(Math.max(0, goal.target - goal.saved))}</small></div><form class="deposit-form" data-goal="${id}"><input type="number" min="0.01" step="0.01" required placeholder="Valor a adicionar" aria-label="Valor a adicionar ao total guardado"><button>Adicionar valor</button></form></article>`; }).join("") : `<article class="panel full-panel">${empty("Crie sua primeira meta", "Defina um valor e acompanhe os aportes ao longo do tempo.")}</article>`;
   }
   function empty(text, detail = "Altere o período ou registre um novo lançamento.") { return `<div class="empty-state"><span>${icon("inbox")}</span><strong>${escapeHTML(text)}</strong><small>${escapeHTML(detail)}</small></div>`; }
 
@@ -434,6 +438,34 @@
     const isRecurringExpense = state.transactionType === "expense" && form.elements.recurring.checked;
     document.querySelector("#paidField").classList.toggle("hidden", !isRecurringExpense);
   }
+  function openGoal() {
+    const form = document.querySelector("#goalForm");
+    form.reset();
+    form.dataset.editingId = "";
+    updateGoalModalHeading();
+    document.querySelector("#goalModal").classList.remove("hidden");
+    setTimeout(() => form.elements.title.focus(), 50);
+  }
+  function editGoal(id) {
+    const goal = state.goals.find(item => item.id === id);
+    if (!goal) { toast("Não foi possível encontrar esta meta"); return; }
+
+    const form = document.querySelector("#goalForm");
+    form.reset();
+    form.dataset.editingId = goal.id;
+    form.elements.title.value = goal.title;
+    form.elements.target.value = goal.target;
+    form.elements.saved.value = goal.saved;
+    updateGoalModalHeading();
+    document.querySelector("#goalModal").classList.remove("hidden");
+    setTimeout(() => form.elements.title.focus(), 50);
+  }
+  function updateGoalModalHeading() {
+    const editing = Boolean(document.querySelector("#goalForm").dataset.editingId);
+    document.querySelector("#goalModalEyebrow").textContent = editing ? "EDITAR OBJETIVO" : "NOVO OBJETIVO";
+    document.querySelector("#goalModalTitle").textContent = editing ? "Editar meta" : "Crie uma meta";
+    document.querySelector("#goalSubmit").textContent = editing ? "Salvar alterações" : "Criar meta";
+  }
   function renderTransactionCategories(selected = "") {
     const allowed = state.categories.filter(category => category.type === state.transactionType || category.type === "both");
     const select = document.querySelector("#categorySelect");
@@ -476,7 +508,7 @@
     const url = URL.createObjectURL(new Blob([content], { type })); const link = document.createElement("a"); link.href = url; link.download = filename; link.click(); URL.revokeObjectURL(url);
   }
   function exportCSV() {
-    const rows = [["Data", "Tipo", "Descrição", "Categoria", "Conta", "Valor"], ...state.transactions.map(item => [item.date, item.type === "income" ? "Entrada" : "Despesa", item.title, item.category, item.account, Number(item.amount).toFixed(2)])];
+    const rows = [["Data", "Tipo", "Descrição", "Categoria", "Conta", "Valor"], ...state.transactions.filter(isPostedTransaction).map(item => [item.date, item.type === "income" ? "Entrada" : "Despesa", item.title, item.category, item.account, Number(item.amount).toFixed(2)])];
     const csv = rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(";")).join("\n");
     download("\ufeff" + csv, `meu-dinheiro-${toISO(new Date())}.csv`, "text/csv;charset=utf-8"); toast("Planilha exportada");
   }
@@ -487,6 +519,7 @@
     if (button.dataset.goView) switchView(button.dataset.goView);
     if (button.dataset.openTransaction) openTransaction(button.dataset.openTransaction);
     if (button.dataset.edit) editTransaction(button.dataset.edit);
+    if (button.dataset.editGoal) editGoal(button.dataset.editGoal);
     if (button.dataset.period) { state.period = button.dataset.period; render(); saveUI(); }
     if (button.id === "openCategoryField") { document.querySelector("#categoryCreateField").classList.remove("hidden"); setTimeout(() => document.querySelector("#newCategoryName").focus(), 0); }
     if (button.id === "cancelCategory") closeCategoryField();
@@ -498,7 +531,11 @@
     if (button.hasAttribute("data-scroll-categories")) document.querySelector(".category-chart").scrollIntoView({ behavior: "smooth" });
   });
   document.addEventListener("change", event => {
-    if (event.target.matches("[data-toggle-paid]")) { state.transactions = state.transactions.map(item => item.id === event.target.dataset.togglePaid ? { ...item, paid: event.target.checked } : item); save(); render(); }
+    if (event.target.matches("[data-toggle-paid]")) {
+      const paid = event.target.checked;
+      state.transactions = state.transactions.map(item => item.id === event.target.dataset.togglePaid ? { ...item, paid } : item);
+      save(); render(); toast(paid ? "Pagamento confirmado e incluído no saldo" : "Pagamento desmarcado e removido do saldo");
+    }
     if (event.target.id === "transactionTypeSelect") setTransactionType(event.target.value, document.querySelector("#categorySelect").value);
     if (event.target.matches("#transactionForm [name='recurring']")) syncRecurringFields();
     if (event.target.id === "typeFilter") { state.typeFilter = event.target.value; render(); saveUI(); }
@@ -532,12 +569,12 @@
     const transaction = { ...previous, id: editingId || uid(), title: String(data.get("title") || "").trim(), amount, type, category: data.get("category"), date: data.get("date"), account: String(data.get("account") || "").trim(), note: String(data.get("note") || "").trim(), recurring, paid };
     if (editingIndex >= 0) state.transactions[editingIndex] = transaction;
     else state.transactions.unshift(transaction);
-    revealTransaction(transaction);
+    if (isPostedTransaction(transaction)) revealTransaction(transaction);
     const persisted = save();
     saveUI();
     closeModals();
     render();
-    if (persisted) toast(editingIndex >= 0 ? "Lançamento atualizado com sucesso" : state.transactionType === "income" ? "Entrada registrada com sucesso" : "Despesa registrada com sucesso");
+    if (persisted) toast(editingIndex >= 0 ? "Lançamento atualizado com sucesso" : recurring && !paid ? "Gasto fixo cadastrado. Ele entrará no saldo quando for marcado como pago." : state.transactionType === "income" ? "Entrada registrada com sucesso" : "Despesa registrada com sucesso");
     else toast(`${editingIndex >= 0 ? "Lançamento atualizado" : "Lançamento registrado"} nesta sessão. O navegador bloqueou o armazenamento local.`);
   });
   const transactionAmountInput = document.querySelector("#transactionForm").elements.amount;
@@ -549,10 +586,20 @@
   });
   transactionAmountInput.addEventListener("blur", event => formatMoneyField(event.currentTarget, true));
   document.querySelector("#goalForm").addEventListener("submit", event => {
-    event.preventDefault(); const data = new FormData(event.currentTarget); state.goals.push({ id: uid(), title: data.get("title").trim(), target: Number(data.get("target")), saved: Number(data.get("saved") || 0), color: goalColors[state.goals.length % goalColors.length] }); save(); closeModals(); event.currentTarget.reset(); render(); toast("Meta criada com sucesso");
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const editingId = form.dataset.editingId;
+    const editingIndex = editingId ? state.goals.findIndex(goal => goal.id === editingId) : -1;
+    if (editingId && editingIndex < 0) { closeModals(); toast("Não foi possível encontrar esta meta"); return; }
+    const previous = editingIndex >= 0 ? state.goals[editingIndex] : {};
+    const goal = { ...previous, id: editingId || uid(), title: String(data.get("title") || "").trim(), target: Number(data.get("target")), saved: Number(data.get("saved") || 0), color: previous.color || goalColors[state.goals.length % goalColors.length] };
+    if (editingIndex >= 0) state.goals[editingIndex] = goal;
+    else state.goals.push(goal);
+    save(); closeModals(); form.reset(); render(); toast(editingIndex >= 0 ? "Meta atualizada com sucesso" : "Meta criada com sucesso");
   });
   document.querySelector("#goalsGrid").addEventListener("submit", event => {
-    const form = event.target.closest(".deposit-form"); if (!form) return; event.preventDefault(); const amount = Number(form.querySelector("input").value); state.goals = state.goals.map(goal => goal.id === form.dataset.goal ? { ...goal, saved: Math.min(goal.target, goal.saved + amount) } : goal); save(); render(); toast("Aporte registrado");
+    const form = event.target.closest(".deposit-form"); if (!form) return; event.preventDefault(); const amount = Number(form.querySelector("input").value); state.goals = state.goals.map(goal => goal.id === form.dataset.goal ? { ...goal, saved: Math.min(goal.target, goal.saved + amount) } : goal); save(); render(); toast("Valor adicionado ao total guardado");
   });
   document.querySelector("#prevPeriod").addEventListener("click", () => movePeriod(-1));
   document.querySelector("#nextPeriod").addEventListener("click", () => movePeriod(1));
@@ -588,7 +635,7 @@
   });
   document.querySelector("#openMenu").addEventListener("click", () => { document.querySelector("#sidebar").classList.add("open"); document.querySelector("#scrim").classList.add("active"); });
   ["#closeMenu", "#scrim"].forEach(selector => document.querySelector(selector).addEventListener("click", () => { document.querySelector("#sidebar").classList.remove("open"); document.querySelector("#scrim").classList.remove("active"); }));
-  document.querySelector("#openGoal").addEventListener("click", () => document.querySelector("#goalModal").classList.remove("hidden"));
+  document.querySelector("#openGoal").addEventListener("click", openGoal);
   document.querySelectorAll(".modal-backdrop").forEach(modal => modal.addEventListener("mousedown", event => { if (event.target === modal) closeModals(); }));
   document.addEventListener("keydown", event => { if (event.key === "Escape") closeModals(); });
   document.querySelector("#backupBtn").addEventListener("click", () => { download(JSON.stringify({ transactions: state.transactions, goals: state.goals, categories: state.categories }, null, 2), `backup-meu-dinheiro-${toISO(new Date())}.json`, "application/json"); toast("Backup criado com sucesso"); });
