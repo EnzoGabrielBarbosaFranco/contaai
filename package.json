@@ -1,0 +1,26 @@
+{
+  "name": "contaai",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "prepare:assets": "node scripts/prepare-assets.mjs",
+    "predev": "npm run prepare:assets",
+    "predeploy": "npm run prepare:assets",
+    "test": "node tests/browser-smoke.mjs",
+    "test:sync": "node tests/sync-worker.mjs",
+    "test:sync:browser": "node tests/browser-sync.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "node --check script.js && node --check cloud/sync-worker.js && node --check service-worker.js && node --check scripts/prepare-assets.mjs && node --check tests/browser-sync.mjs && node --check tests/sync-worker.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.130.0"
+  },
+  "overrides": {
+    "sharp": "0.35.4"
+  }
+}

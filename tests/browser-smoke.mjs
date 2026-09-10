@@ -209,6 +209,43 @@ async function runBrowser(name, executable, appUrl) {
     assert(darkMode.modalColorScheme === "dark", `${name}: os controles nativos do modal não receberam o tema escuro`);
     assert(darkMode.footerVisible, `${name}: o rodapé lateral ficou cortado em 1354x650`);
 
+    await devTools.command("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    const mobileHeader = await devTools.evaluate(`(async () => {
+      document.querySelector('#openMenu').click();
+      await new Promise(resolve => setTimeout(resolve, 280));
+      const brand = document.querySelector('.mobile-brand').getBoundingClientRect();
+      const period = document.querySelector('.period-control').getBoundingClientRect();
+      const sidebar = document.querySelector('#sidebar').getBoundingClientRect();
+      const syncButton = document.querySelector('#openSync');
+      const syncLabel = syncButton.querySelector('span').getBoundingClientRect();
+      const result = {
+        brandVisible: brand.width > 90 && brand.height >= 28,
+        brandText: document.querySelector('.mobile-brand').textContent,
+        brandAbovePeriod: brand.bottom <= period.top,
+        sidebarFits: sidebar.width <= innerWidth - 15,
+        syncSingleLine: syncLabel.height < 20 && syncButton.scrollHeight <= syncButton.clientHeight + 1,
+        topStripeRemoved: getComputedStyle(document.body, '::before').content === 'none'
+      };
+      document.querySelector('#closeMenu').click();
+      return result;
+    })()`);
+    assert(mobileHeader.brandVisible && mobileHeader.brandText.includes("Conta") && mobileHeader.brandAbovePeriod, `${name}: a marca não ficou visível e organizada no cabeçalho mobile`);
+    assert(mobileHeader.sidebarFits && mobileHeader.syncSingleLine && mobileHeader.topStripeRemoved, `${name}: a barra lateral mobile, o botão de sincronização ou a remoção da faixa superior falhou`);
+    if (process.argv.includes("--screenshots") && name === "Chrome") {
+      await devTools.evaluate("new Promise(resolve => setTimeout(() => resolve(true), 300))");
+      const mobileHeaderShot = await devTools.command("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+      const mobileHeaderPath = resolve(tmpdir(), "contaai-mobile-header.png");
+      await writeFile(mobileHeaderPath, Buffer.from(mobileHeaderShot.data, "base64"));
+      process.stdout.write(`Prévia: ${mobileHeaderPath}\n`);
+      await devTools.evaluate("document.querySelector('#openMenu').click(); new Promise(resolve => setTimeout(() => resolve(true), 300))");
+      const mobileShot = await devTools.command("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+      const mobilePath = resolve(tmpdir(), "contaai-mobile-navigation.png");
+      await writeFile(mobilePath, Buffer.from(mobileShot.data, "base64"));
+      process.stdout.write(`Prévia: ${mobilePath}\n`);
+      await devTools.evaluate("document.querySelector('#closeMenu').click(); true");
+    }
+    await devTools.command("Emulation.setDeviceMetricsOverride", { width: 1354, height: 650, deviceScaleFactor: 1, mobile: false });
+
     if (process.argv.includes("--screenshots") && name === "Chrome") {
       await devTools.evaluate("document.querySelector('#themeBtn').click(); document.querySelector('#prevPeriod').click(); new Promise(resolve => setTimeout(() => resolve(true), 350))");
       const dashboardShot = await devTools.command("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
@@ -360,6 +397,37 @@ async function runBrowser(name, executable, appUrl) {
     assert(goalEditing.goals.length === 1 && goalEditing.goals[0]?.id === goalEditing.createdId, `${name}: a edição duplicou a meta ou alterou seu identificador`);
     assert(goalEditing.goals[0]?.title === "Reserva atualizada" && goalEditing.goals[0]?.target === 15000.75 && goalEditing.goals[0]?.saved === 3200.5, `${name}: os novos valores da meta não foram salvos`);
     assert(goalEditing.iconsAlwaysVisible && goalEditing.modalClosed && goalEditing.toast.includes("atualizada") && goalEditing.cardText.includes("Reserva atualizada"), `${name}: a interface de edição da meta não foi atualizada corretamente`);
+
+    const budgeting = await devTools.evaluate(`(async () => {
+      document.querySelector('[data-view="budgets"]').click();
+      document.querySelector('#openBudget').click();
+      const form = document.querySelector('#budgetForm');
+      const categories = [...form.elements.category.options].map(option => option.value);
+      form.elements.category.value = 'Moradia';
+      form.elements.limit.value = '1.500,00';
+      form.requestSubmit();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      const created = JSON.parse(localStorage.getItem('contaai-budgets-v1') || '[]')[0];
+      document.querySelector('[data-edit-budget="' + created.id + '"]').click();
+      const prefilled = { category: form.elements.category.value, limit: form.elements.limit.value };
+      form.elements.limit.value = '2.000,00';
+      form.requestSubmit();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      const budgets = JSON.parse(localStorage.getItem('contaai-budgets-v1') || '[]');
+      const result = {
+        categories,
+        prefilled,
+        budgets,
+        cardText: document.querySelector('#budgetGrid').textContent,
+        summaryText: document.querySelector('#budgetSummary').textContent,
+        modalClosed: document.querySelector('#budgetModal').classList.contains('hidden')
+      };
+      document.querySelector('[data-view="dashboard"]').click();
+      return result;
+    })()`);
+    assert(budgeting.categories.includes("Moradia") && budgeting.prefilled.category === "Moradia" && budgeting.prefilled.limit === "1.500,00", `${name}: o orçamento não abriu com os dados esperados`);
+    assert(budgeting.budgets.length === 1 && budgeting.budgets[0]?.limit === 2000 && Number.isFinite(budgeting.budgets[0]?.updatedAt), `${name}: o orçamento não foi salvo ou atualizado corretamente`);
+    assert(budgeting.modalClosed && budgeting.cardText.includes("Moradia") && budgeting.cardText.includes("R$ 2.000,00") && budgeting.summaryText.includes("R$ 2.000,00"), `${name}: o resumo visual do orçamento não foi atualizado`);
 
     const pendingFixed = await devTools.evaluate(`(async () => {
       const expenseCard = () => document.querySelector('#dashboardView .summary-card.expense strong').textContent;

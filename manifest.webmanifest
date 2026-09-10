@@ -1,0 +1,15 @@
+{
+  "name": "Conta Aí — Controle financeiro",
+  "short_name": "Conta Aí",
+  "description": "Controle financeiro pessoal local-first com sincronização criptografada opcional.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f8fb",
+  "theme_color": "#0b4f86",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/contaai-simbolo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

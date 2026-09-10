@@ -3,13 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Controle financeiro pessoal salvo no navegador.">
+  <meta name="description" content="Controle financeiro pessoal, local-first e com sincronização criptografada opcional.">
+  <meta name="theme-color" content="#0b4f86">
   <title>Conta Aí — Controle financeiro pessoal</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="manifest" href="manifest.webmanifest">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true">
@@ -28,6 +30,7 @@
     <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="icon-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
     <symbol id="icon-download" viewBox="0 0 24 24"><path d="M12 3v12m0 0 5-5m-5 5-5-5"/><path d="M5 20h14"/></symbol>
+    <symbol id="icon-upload" viewBox="0 0 24 24"><path d="M12 16V4m0 0 5 5m-5-5L7 9"/><path d="M5 20h14"/></symbol>
     <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></symbol>
     <symbol id="icon-wallet" viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H18a2 2 0 0 1 2 2v13H6a2 2 0 0 1-2-2V6.5Z"/><path d="M4 8h16M16 13h4"/></symbol>
     <symbol id="icon-arrow-up-right" viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></symbol>
@@ -37,6 +40,9 @@
     <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></symbol>
     <symbol id="icon-chart" viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></symbol>
     <symbol id="icon-inbox" viewBox="0 0 24 24"><path d="m5 5-2 9v5h18v-5l-2-9H5Z"/><path d="M3 14h5l2 3h4l2-3h5"/></symbol>
+    <symbol id="icon-budget" viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/><path d="m4 7 6-4 6 7 5-5"/></symbol>
+    <symbol id="icon-cloud" viewBox="0 0 24 24"><path d="M7 18h11a4 4 0 0 0 .6-7.95A6.5 6.5 0 0 0 6.3 8.2 4.9 4.9 0 0 0 7 18Z"/><path d="m9 13 3-3 3 3M12 10v6"/></symbol>
+    <symbol id="icon-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
   </svg>
   <main class="app" id="app">
     <aside class="sidebar" id="sidebar">
@@ -47,16 +53,19 @@
         <button class="nav-item active" data-view="dashboard"><span><svg class="icon"><use href="#icon-dashboard"></use></svg></span>Visão geral</button>
         <button class="nav-item" data-view="transactions"><span><svg class="icon"><use href="#icon-receipt"></use></svg></span>Lançamentos</button>
         <button class="nav-item" data-view="recurring"><span><svg class="icon"><use href="#icon-repeat"></use></svg></span>Gastos fixos <b class="nav-badge" id="fixedCount">0</b></button>
+        <button class="nav-item" data-view="budgets"><span><svg class="icon"><use href="#icon-budget"></use></svg></span>Orçamentos</button>
         <button class="nav-item" data-view="goals"><span><svg class="icon"><use href="#icon-target"></use></svg></span>Minhas metas</button>
       </nav>
       <div class="sidebar-tip">
-        <span><svg class="icon"><use href="#icon-shield"></use></svg></span><strong>Dados somente no seu navegador</strong>
-        <p>Ficam salvos somente neste navegador. Faça backups regularmente.</p>
-        <button id="backupBtn">Criar backup</button>
-        <button class="link-btn" id="restoreBtn">Restaurar backup</button>
+        <span class="sync-mark"><svg class="icon"><use href="#icon-cloud"></use></svg><i id="syncDot"></i></span><strong id="syncSidebarTitle">Dados neste navegador</strong>
+        <p id="syncSidebarText">Ative o cofre para usar os mesmos dados nos seus outros navegadores.</p>
+        <button class="sync-cta" id="openSync"><svg class="icon"><use href="#icon-cloud"></use></svg><span>Ativar sincronização</span></button>
+        <div class="backup-section">
+          <span class="backup-label">BACKUP LOCAL</span>
+          <div class="backup-actions"><button id="backupBtn" title="Baixar arquivo de backup"><svg class="icon"><use href="#icon-download"></use></svg><span>Baixar</span></button><button id="restoreBtn" title="Restaurar um arquivo de backup"><svg class="icon"><use href="#icon-upload"></use></svg><span>Restaurar</span></button></div>
+        </div>
         <input type="file" id="restoreInput" accept="application/json" hidden>
       </div>
-      <div class="sidebar-foot">Conta Aí · controle pessoal</div>
     </aside>
 
     <button class="scrim" id="scrim" aria-label="Fechar menu"></button>
@@ -64,6 +73,7 @@
     <section class="workspace">
       <header class="topbar">
         <button class="hamburger" id="openMenu" aria-label="Abrir menu"><svg class="icon"><use href="#icon-menu"></use></svg></button>
+        <div class="mobile-brand" aria-label="Conta Aí"><img src="contaai-simbolo.svg" alt="" width="32" height="32"><span>Conta <strong>Aí</strong></span></div>
         <div class="period-control">
           <button id="prevPeriod" aria-label="Período anterior"><svg class="icon"><use href="#icon-chevron-left"></use></svg></button>
           <div><span id="periodEyebrow">PERÍODO ATUAL</span><strong id="periodLabel">—</strong></div>
@@ -116,6 +126,12 @@
           <article class="panel full-panel"><div class="panel-head"><div><span class="eyebrow">RECORRÊNCIAS DO MÊS</span><h2>Contas e assinaturas</h2></div></div><div class="recurring-grid" id="recurringGrid"></div></article>
         </section>
 
+        <section id="budgetsView" class="view">
+          <div class="welcome page-heading"><div><span class="eyebrow">LIMITES MENSAIS</span><h1>Meus orçamentos</h1><p>Defina quanto pretende gastar por categoria e acompanhe o mês.</p></div><button class="primary-btn" id="openBudget"><svg class="icon"><use href="#icon-plus"></use></svg>Novo orçamento</button></div>
+          <section class="budget-summary" id="budgetSummary"></section>
+          <section class="budget-grid" id="budgetGrid"></section>
+        </section>
+
         <section id="goalsView" class="view">
           <div class="welcome page-heading"><div><span class="eyebrow">PLANEJAMENTO</span><h1>Minhas metas</h1><p>Defina objetivos e acompanhe os aportes ao longo do tempo.</p></div><button class="primary-btn" id="openGoal"><svg class="icon"><use href="#icon-plus"></use></svg>Nova meta</button></div>
           <section class="goals-grid" id="goalsGrid"></section>
@@ -149,7 +165,32 @@
     </div>
   </div>
 
+  <div class="modal-backdrop hidden" id="budgetModal">
+    <div class="modal small-modal" role="dialog" aria-modal="true" aria-labelledby="budgetModalTitle">
+      <div class="modal-head"><div><span class="eyebrow" id="budgetModalEyebrow">NOVO ORÇAMENTO</span><h2 id="budgetModalTitle">Planejar categoria</h2></div><button class="close-modal" aria-label="Fechar"><svg class="icon"><use href="#icon-close"></use></svg></button></div>
+      <form id="budgetForm"><label class="full">Categoria<select name="category" id="budgetCategory" required></select></label><label class="full">Limite mensal (R$)<input name="limit" required type="text" inputmode="decimal" autocomplete="off" maxlength="24" placeholder="0,00"></label><p class="form-hint full">O mesmo limite é usado todos os meses; o valor gasto acompanha o mês selecionado no topo.</p><div class="modal-actions full"><button type="button" class="secondary-btn close-modal">Cancelar</button><button class="primary-btn" id="budgetSubmit">Salvar orçamento</button></div></form>
+    </div>
+  </div>
+
+  <div class="modal-backdrop hidden" id="syncModal">
+    <div class="modal sync-modal" role="dialog" aria-modal="true" aria-labelledby="syncModalTitle">
+      <div class="modal-head"><div><span class="eyebrow">COFRE CRIPTOGRAFADO</span><h2 id="syncModalTitle">Sincronizar dispositivos</h2></div><button class="close-modal" aria-label="Fechar"><svg class="icon"><use href="#icon-close"></use></svg></button></div>
+      <div id="syncDisconnected" class="sync-pane">
+        <div class="privacy-note"><span><svg class="icon"><use href="#icon-shield"></use></svg></span><div><strong>Seus dados saem daqui criptografados</strong><p>O servidor guarda somente um pacote ilegível. O código do cofre é a chave e não pode ser recuperado.</p></div></div>
+        <button class="primary-btn sync-main-action" id="createVault">Criar cofre com meus dados</button>
+        <div class="sync-divider"><span>ou conecte um cofre existente</span></div>
+        <form id="connectVaultForm" class="sync-connect-form"><label>Código do cofre<input name="secret" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" required></label><button class="secondary-btn">Conectar este navegador</button></form>
+      </div>
+      <div id="syncConnected" class="sync-pane hidden">
+        <div class="sync-status-card"><span class="sync-status-icon"><svg class="icon"><use href="#icon-cloud"></use></svg></span><div><strong id="syncStatusTitle">Cofre conectado</strong><p id="syncStatusText">Preparando a primeira sincronização…</p></div></div>
+        <label class="vault-code-label">Código do seu cofre<small>Guarde-o em local seguro. Ele dá acesso aos seus dados.</small></label>
+        <div class="vault-code"><code id="vaultCode"></code><button id="copyVaultCode" aria-label="Copiar código" title="Copiar código"><svg class="icon"><use href="#icon-copy"></use></svg></button></div>
+        <div class="sync-actions"><button class="primary-btn" id="syncNow">Sincronizar agora</button><button class="secondary-btn" id="disconnectVault">Desconectar</button></div>
+      </div>
+    </div>
+  </div>
+
   <div class="toast hidden" id="toast"></div>
-  <script src="script.js"></script>
+  <script src="script.js?v=3"></script>
 </body>
 </html>
